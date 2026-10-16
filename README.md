@@ -52,6 +52,10 @@ Vite’s relative base supports both `username.github.io/repository/` and root/c
 
 ## Practice behavior
 
+- Opens directly on the current chord, without a landing or setup page. A welcome
+  modal explains practice; checking **Don’t show again** when dismissing saves that
+  preference in this browser. The microphone and hint timer start only after you
+  choose microphone or manual practice below the card.
 - Standard re-entrant **G4 C4 E4 A4** tuning only.
 - 20 chords, ordered from easy, useful shapes to later challenges: C, Am, F, G, C7, A, G7, A7, Em, Dm, D, E7, D7, Am7, Em7, Cm, Gm, B♭, Bm, E.
 - A daily queue contains oldest-due reviews first, then up to **3 new chords**, capped at **15 distinct chords**. It is fixed once practice starts and resumes after reload. Days use the device’s local calendar date.

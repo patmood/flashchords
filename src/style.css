@@ -30,7 +30,8 @@
   .icon-button { @apply flex h-11 w-11 items-center justify-center rounded-full hover:bg-ink/5; }
 }
 
-.hero-art { background: radial-gradient(ellipse at center, #e6ebd8 0%, #e6ebd8 58%, transparent 59%); }
+.welcome-dialog { margin: auto; width: min(440px, calc(100% - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; color: #293e34; }
+.welcome-dialog::backdrop { background: #293e3466; backdrop-filter: blur(4px); }
 .card-enter { animation: card-in .35s ease-out both; }
 .success-card { animation: success-pop .5s ease-out; }
 .confetti { position: absolute; inset: 0; pointer-events: none; overflow: hidden; border-radius: 28px; }

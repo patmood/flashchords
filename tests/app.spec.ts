@@ -1,11 +1,56 @@
 import { expect, test } from '@playwright/test';
 
+test('opens on the chord and waits to start, with no landing or setup page', async ({ page }) => {
+  await page.clock.install();
+  await page.addInitScript(() => {
+    Object.assign(window, { microphoneRequests: 0 });
+    navigator.mediaDevices.getUserMedia = async () => {
+      (window as unknown as { microphoneRequests: number }).microphoneRequests++;
+      throw new DOMException('Denied', 'NotAllowedError');
+    };
+  });
+  await page.goto('/');
+  await expect(page.getByRole('dialog', { name: 'Welcome to Little Strum.' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Let’s play' })).toBeFocused();
+  await page.clock.fastForward(30_000);
+  await page.getByRole('button', { name: 'Let’s play' }).click();
+  await expect(page.getByRole('heading', { name: 'C', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Enable microphone & begin' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Your next chord|Ready when you are/ })).toHaveCount(0);
+  await page.clock.fastForward(30_000);
+  await expect(page.locator('#fingering')).toBeHidden();
+  expect(await page.evaluate(() => (window as unknown as { microphoneRequests: number }).microphoneRequests)).toBe(0);
+});
+
+test('welcome returns unless Don’t show again is checked on dismissal', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Let’s play' }).click();
+  await page.reload();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.getByRole('checkbox', { name: 'Don’t show again' }).check();
+  await page.getByRole('button', { name: 'Let’s play' }).click();
+  expect(await page.evaluate(() => localStorage.getItem('little-strum.hide-welcome.v1'))).toBe('true');
+  await page.reload();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'C', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Enable microphone & begin' })).toBeVisible();
+});
+
+test('Escape dismisses the welcome and respects its checkbox', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('checkbox', { name: 'Don’t show again' }).check();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
 test('mobile daily practice, hint timing, persistence, and completion', async ({ page }) => {
   await page.clock.install();
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: /Your next chord/ })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Welcome to Little Strum.' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.getByRole('button', { name: 'Let’s practice' }).click();
+  await page.getByRole('button', { name: 'Let’s play' }).click();
   await page.getByRole('button', { name: 'Practice without a microphone' }).click();
   await expect(page.getByRole('heading', { name: 'C', exact: true })).toBeVisible();
   await expect(page.locator('#fingering')).toBeHidden();
@@ -17,9 +62,9 @@ test('mobile daily practice, hint timing, persistence, and completion', async ({
   await expect(page.getByText('Self-assessed. Nice practice!')).toBeVisible();
   await page.clock.fastForward(1_500);
   await expect(page.getByRole('heading', { name: 'Am', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Save & exit' }).click();
+  await page.getByRole('button', { name: 'Progress', exact: true }).click();
   await page.reload();
-  await page.getByRole('button', { name: 'Continue practice' }).click();
+  await page.getByRole('button', { name: 'Let’s play' }).click();
   await page.getByRole('button', { name: 'Practice without a microphone' }).click();
   await expect(page.getByRole('heading', { name: 'Am', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'I got it' }).click();
@@ -43,7 +88,7 @@ test('microphone denial has an actionable manual fallback', async ({ page }) => 
     navigator.mediaDevices.getUserMedia = () => Promise.reject(new DOMException('Denied', 'NotAllowedError'));
   });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Let’s practice' }).click();
+  await page.getByRole('button', { name: 'Let’s play' }).click();
   await page.getByRole('button', { name: 'Enable microphone & begin' }).click();
   await expect(page.getByRole('alert')).toContainText('Microphone access was not allowed');
   await page.getByRole('button', { name: 'Practice without a microphone' }).click();
@@ -53,7 +98,7 @@ test('microphone denial has an actionable manual fallback', async ({ page }) => 
 test('background time does not count toward the hint', async ({ page }) => {
   await page.clock.install();
   await page.goto('/');
-  await page.getByRole('button', { name: 'Let’s practice' }).click();
+  await page.getByRole('button', { name: 'Let’s play' }).click();
   await page.getByRole('button', { name: 'Practice without a microphone' }).click();
   await page.clock.fastForward(10_000);
   await page.evaluate(() => {
@@ -71,14 +116,14 @@ test('background time does not count toward the hint', async ({ page }) => {
   await expect(page.locator('#fingering')).toBeVisible();
 });
 
-test('home and practice fit narrow phones and desktop', async ({ page }) => {
+test('welcome and practice fit narrow phones and desktop', async ({ page }) => {
   await page.goto('/');
   for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   }
   await page.setViewportSize({ width: 320, height: 700 });
-  await page.getByRole('button', { name: 'Let’s practice' }).click();
+  await page.getByRole('button', { name: 'Let’s play' }).click();
   await page.getByRole('button', { name: 'Practice without a microphone' }).click();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.getByRole('button', { name: 'Show fingering' }).click();
@@ -89,8 +134,8 @@ test('corrupt storage is not overwritten', async ({ page }) => {
   await page.goto('/');
   await page.evaluate(() => localStorage.setItem('little-strum.progress.v1', '{broken'));
   await page.reload();
+  await page.getByRole('button', { name: 'Let’s play' }).click();
   await expect(page.getByRole('alert')).toContainText('It has not been overwritten');
-  await page.getByRole('button', { name: 'Let’s practice' }).click();
   await page.getByRole('button', { name: 'Practice without a microphone' }).click();
   await page.getByRole('button', { name: 'I got it' }).click();
   expect(await page.evaluate(() => localStorage.getItem('little-strum.progress.v1'))).toBe('{broken');
@@ -123,7 +168,7 @@ test('microphone recognizes a synthetic strum and rejects a wrong chord', async 
     };
   });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Let’s practice' }).click();
+  await page.getByRole('button', { name: 'Let’s play' }).click();
   await page.getByRole('button', { name: 'Enable microphone & begin' }).click();
   await expect(page.getByText('Listening for your strum…')).toBeVisible();
   await page.evaluate(() => (window as unknown as { strum: (n: number[]) => void }).strum([261.626, 329.628, 391.995, 523.251]));
