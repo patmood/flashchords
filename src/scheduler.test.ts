@@ -1,9 +1,41 @@
 import { describe, expect, it } from 'vitest';
 import { createEmptyCard } from 'ts-fsrs';
 import { CHORDS } from './chords';
-import { dayKey, emptyProgress, ensureSession, gradeAttempt, loadProgress, nextExtraChord, Rating, recordAttempt } from './scheduler';
+import { acceptIntroduction, dayKey, deferIntroduction, emptyProgress, ensureSession, gradeAttempt, loadProgress, needsIntroduction, nextExtraChord, nextFamiliarChord, Rating, recordAttempt } from './scheduler';
 
 const now = new Date(2026, 9, 16, 12);
+
+describe('new-chord introductions', () => {
+  it('remembers acceptance without recording a successful practice attempt', () => {
+    let progress = emptyProgress();
+    expect(needsIntroduction(progress, 'c')).toBe(true);
+    progress = acceptIntroduction(progress, 'c');
+    expect(needsIntroduction(loadProgress(JSON.stringify(progress)), 'c')).toBe(false);
+    expect(progress.history).toHaveLength(0);
+    expect(progress.cards).toEqual({});
+  });
+
+  it('defers for three real review attempts and does not flood the learner with other new chords', () => {
+    let progress = dailyDone();
+    progress = deferIntroduction(progress, 'g');
+    const threshold = progress.deferred!.g;
+    for (let i = 0; i < 3; i++) {
+      const at = new Date(now.getTime() + 4000 + i * 2000);
+      const id = nextExtraChord(progress, '', at)!;
+      expect(['c', 'am', 'f']).toContain(id);
+      progress = recordAttempt(progress, { chordId: id, seconds: 4, hinted: false, manual: true, extra: true }, at);
+    }
+    expect(progress.history.length).toBe(threshold);
+    expect(nextExtraChord(loadProgress(JSON.stringify(progress)), '', new Date(now.getTime() + 10000))).toBe('g');
+    progress = acceptIntroduction(progress, 'g');
+    expect(progress.deferred!.g).toBeUndefined();
+  });
+
+  it('offers only familiar chords as spacer cards', () => {
+    expect(nextFamiliarChord(emptyProgress())).toBeNull();
+    expect(['c', 'am', 'f']).toContain(nextFamiliarChord(dailyDone(), 'f', new Date(now.getTime() + 5000)));
+  });
+});
 
 function dailyDone() {
   let progress = ensureSession(emptyProgress(), now);

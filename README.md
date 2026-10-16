@@ -60,6 +60,12 @@ Vite’s relative base supports both `username.github.io/repository/` and root/c
   modal explains practice; checking **Don’t show again** when dismissing saves that
   preference in this browser. The microphone and hint timer start only after you
   choose microphone or manual practice below the card.
+- New chords first appear in an introduction modal with their fingering and sound.
+  **I’m ready** (play C) accepts the introduction without marking the chord learned.
+  **I’m not ready** (play Am) defers it for **3 successful familiar-card reviews**,
+  then offers it again. Deferrals and accepted introductions survive reloads. If
+  there are no familiar chords yet, a no-pressure break screen offers an explicit
+  retry instead; declining never creates a practice success or failure.
 - Standard re-entrant **G4 C4 E4 A4** tuning only.
 - 20 chords, ordered from easy, useful shapes to later challenges: C, Am, F, G, C7, A, G7, A7, Em, Dm, D, E7, D7, Am7, Em7, Cm, Gm, B♭, Bm, E.
 - A daily queue contains oldest-due reviews first, then up to **3 new chords**, capped at **15 distinct chords**. It is fixed once practice starts and resumes after reload. Days use the device’s local calendar date.
@@ -71,18 +77,32 @@ Vite’s relative base supports both `username.github.io/repository/` and root/c
   reloads. After all 20 chords are introduced, reviews continue indefinitely.
   Extra attempts update FSRS and history without changing the daily queue or its
   completion. New extra-practice chords also receive normal FSRS schedules.
-- Each card initially shows only the requested chord. After **20 active seconds**, or an early hint request, it reveals a G–C–E–A chord diagram with fret and finger positions. The card remains until microphone recognition or self-assessed success.
+- After accepting an introduction, practice shows the requested chord from memory.
+  After **15 active seconds**, or an early hint request, it reveals a G–C–E–A chord
+  diagram with fret and finger positions. It keeps listening after the reveal and
+  stays on the card until microphone recognition or self-assessed success.
 - Success animates, saves the result, and advances after 1.4 seconds. Reduced-motion preferences are respected.
 - Success cards include a compact fingering diagram, even for unassisted attempts.
 - A synthesized, ukulele-like strum previews each card using its actual high-G
   voicing. **Hear chord** replays it, and **Auto sound** toggles automatic previews
-  (saved on this device). Microphone checking and the 20-second practice timer are
+  (saved on this device). Microphone checking and the 15-second practice timer are
   suspended during playback, including a short quiet tail, so the app cannot answer
   its own card. Playback stops when leaving practice or backgrounding the app.
   Browsers may block the first automatic sound until a tap; dismissing the welcome,
   choosing a practice mode, or tapping **Hear chord** unlocks audio. No external
   samples, network requests, or recordings are used.
-- Backgrounding the app pauses the attempt and releases the microphone. Resume explicitly to reconnect.
+- Backgrounding the app pauses the attempt and releases the microphone. Hands-free
+  controls reconnect on return when the browser permits; resume practice explicitly.
+  Some mobile browsers require another tap to reactivate audio.
+- Buttons throughout the app show **♫ chord** shortcuts. After a one-time tap to
+  grant microphone access, listening continues across practice, introductions,
+  welcome, completion, progress, and settings screens while they are foregrounded.
+  Only enabled buttons actually on screen can be triggered, and an open modal
+  takes precedence. Let the strings go quiet between commands. The current
+  practice chord is reserved for a verified answer, not another button action.
+  Playback cannot press its own buttons. Manual mode turns the microphone off;
+  enable hands-free again to resume chord controls. Reset remains tap-only, with
+  confirmation, to avoid accidental data loss.
 - Progress is stored under `flashchords.progress.v1` in this browser’s local storage; the welcome preference uses `flashchords.hide-welcome.v1`. Existing keys from the previous app name are migrated automatically on the same origin, without deleting the original data. Private browsing, changing devices/browsers, or clearing site data may lose progress. Settings provide a JSON data export and a confirmed reset. Export is for retaining/inspecting data; this version has no import UI.
 - Unreadable saved data is not overwritten. Storage failures are surfaced rather than silently claiming durable persistence.
 

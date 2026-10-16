@@ -17,6 +17,8 @@ export interface Progress {
   cards: Record<string, Card>;
   history: Attempt[];
   daily: { date: string; ids: string[]; completed: string[] } | null;
+  introduced?: string[];
+  deferred?: Record<string, number>;
 }
 export { STORAGE_KEY } from './storage';
 const engine = fsrs(generatorParameters({ request_retention: 0.9, enable_fuzz: true }));
@@ -45,7 +47,38 @@ export function loadProgress(raw: string | null): Progress {
   if (daily && (typeof daily.date !== 'string' || !Array.isArray(daily.ids) || !Array.isArray(daily.completed)
     || daily.ids.some((id: string) => !CHORDS.some(c => c.id === id))
     || daily.completed.some((id: string) => !daily.ids.includes(id)))) throw new Error('Invalid session');
-  return { version: 1, cards, history, daily: daily || null };
+  const introduced = Array.isArray(parsed.introduced) ? parsed.introduced.filter((id: string) => CHORDS.some(c => c.id === id)) : [];
+  const deferred = Object.fromEntries(Object.entries(parsed.deferred || {}).filter(([id, count]) => CHORDS.some(c => c.id === id) && Number.isInteger(count) && (count as number) >= 0)) as Record<string, number>;
+  return { version: 1, cards, history, daily: daily || null, introduced, deferred };
+}
+
+export function needsIntroduction(progress: Progress, id: string): boolean {
+  return !progress.cards[id] && !progress.introduced?.includes(id);
+}
+
+export function acceptIntroduction(progress: Progress, id: string): Progress {
+  const deferred = { ...progress.deferred };
+  delete deferred[id];
+  return { ...progress, introduced: [...new Set([...(progress.introduced || []), id])], deferred };
+}
+
+export function deferIntroduction(progress: Progress, id: string): Progress {
+  return { ...progress, deferred: { ...progress.deferred, [id]: progress.history.length + 3 } };
+}
+
+export function nextFamiliarChord(progress: Progress, previousId = '', now = new Date()): string | null {
+  const introduced = CHORDS.filter(chord => progress.cards[chord.id]);
+  const candidates = introduced.length > 1 ? introduced.filter(chord => chord.id !== previousId) : introduced;
+  candidates.sort((a, b) => {
+    const first = progress.cards[a.id];
+    const second = progress.cards[b.id];
+    const firstDue = first.due <= now;
+    const secondDue = second.due <= now;
+    if (firstDue !== secondDue) return firstDue ? -1 : 1;
+    if (firstDue) return first.due.getTime() - second.due.getTime();
+    return (first.last_review?.getTime() ?? 0) - (second.last_review?.getTime() ?? 0);
+  });
+  return candidates[0]?.id ?? null;
 }
 
 export function ensureSession(progress: Progress, now = new Date()): Progress {
@@ -66,16 +99,6 @@ export function gradeAttempt(seconds: number, hinted: boolean): Rating {
 
 export function nextExtraChord(progress: Progress, previousId = '', now = new Date()): string | null {
   const introduced = CHORDS.filter(chord => progress.cards[chord.id]);
-  const candidates = introduced.length > 1 ? introduced.filter(chord => chord.id !== previousId) : introduced;
-  candidates.sort((a, b) => {
-    const first = progress.cards[a.id];
-    const second = progress.cards[b.id];
-    const firstDue = first.due <= now;
-    const secondDue = second.due <= now;
-    if (firstDue !== secondDue) return firstDue ? -1 : 1;
-    if (firstDue) return first.due.getTime() - second.due.getTime();
-    return (first.last_review?.getTime() ?? 0) - (second.last_review?.getTime() ?? 0);
-  });
   // Keep new material gradual, even across reloads or separate extra sessions.
   const seen = new Set<string>();
   let extraReviewsSinceNew = 0;
@@ -85,11 +108,12 @@ export function nextExtraChord(progress: Progress, previousId = '', now = new Da
       extraReviewsSinceNew = 0;
     } else if (attempt.extra) extraReviewsSinceNew++;
   }
-  const fresh = CHORDS.find(chord => !progress.cards[chord.id]);
+  const waiting = Object.values(progress.deferred || {}).some(count => count > progress.history.length);
+  const fresh = waiting ? undefined : CHORDS.find(chord => !progress.cards[chord.id] && (progress.deferred?.[chord.id] ?? 0) <= progress.history.length);
   if (fresh && (!introduced.length || (extraReviewsSinceNew >= 3 && !introduced.some(chord => progress.cards[chord.id].due <= now)))) {
     return fresh.id;
   }
-  return candidates[0]?.id ?? null;
+  return nextFamiliarChord(progress, previousId, now);
 }
 
 export function recordAttempt(progress: Progress, attempt: Omit<Attempt, 'at' | 'rating'>, now = new Date()): Progress {
