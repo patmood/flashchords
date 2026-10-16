@@ -10,7 +10,7 @@ test('opens on the chord and waits to start, with no landing or setup page', asy
     };
   });
   await page.goto('/');
-  await expect(page.getByRole('dialog', { name: 'Welcome to Little Strum.' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Welcome to Flashchords.' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Let’s play' })).toBeFocused();
   await page.clock.fastForward(30_000);
   await page.getByRole('button', { name: 'Let’s play' }).click();
@@ -29,7 +29,7 @@ test('welcome returns unless Don’t show again is checked on dismissal', async 
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.getByRole('checkbox', { name: 'Don’t show again' }).check();
   await page.getByRole('button', { name: 'Let’s play' }).click();
-  expect(await page.evaluate(() => localStorage.getItem('little-strum.hide-welcome.v1'))).toBe('true');
+  expect(await page.evaluate(() => localStorage.getItem('flashchords.hide-welcome.v1'))).toBe('true');
   await page.reload();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'C', exact: true })).toBeVisible();
@@ -45,10 +45,29 @@ test('Escape dismisses the welcome and respects its checkbox', async ({ page }) 
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 
+test('renaming preserves old progress and welcome preferences', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Let’s play' }).click();
+  await page.getByRole('button', { name: 'Practice without a microphone' }).click();
+  await page.getByRole('button', { name: 'I got it' }).click();
+  await page.evaluate(() => {
+    const progress = localStorage.getItem('flashchords.progress.v1')!;
+    localStorage.setItem('little-strum.progress.v1', progress);
+    localStorage.setItem('little-strum.hide-welcome.v1', 'true');
+    localStorage.removeItem('flashchords.progress.v1');
+    localStorage.removeItem('flashchords.hide-welcome.v1');
+  });
+  await page.reload();
+  await expect(page).toHaveTitle('Flashchords · Ukulele practice');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Am', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('flashchords.progress.v1')!).history)).toHaveLength(1);
+});
+
 test('mobile daily practice, hint timing, persistence, and completion', async ({ page }) => {
   await page.clock.install();
   await page.goto('/');
-  await expect(page.getByRole('dialog', { name: 'Welcome to Little Strum.' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Welcome to Flashchords.' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.getByRole('button', { name: 'Let’s play' }).click();
   await page.getByRole('button', { name: 'Practice without a microphone' }).click();
@@ -75,7 +94,7 @@ test('mobile daily practice, hint timing, persistence, and completion', async ({
   await page.getByRole('button', { name: 'I got it' }).click();
   await page.clock.fastForward(1_500);
   await expect(page.getByRole('heading', { name: 'Look at you grow.' })).toBeVisible();
-  const data = await page.evaluate(() => JSON.parse(localStorage.getItem('little-strum.progress.v1')!));
+  const data = await page.evaluate(() => JSON.parse(localStorage.getItem('flashchords.progress.v1')!));
   expect(data.history).toHaveLength(3);
   expect(data.history[0].rating).toBe(1);
   expect(data.history.every((a: { manual: boolean }) => a.manual)).toBe(true);
@@ -118,7 +137,7 @@ test('daily session ends, but extra practice introduces new chords gradually and
   await page.getByRole('button', { name: 'Finish extra practice' }).click();
   await page.clock.fastForward(2_000);
   await expect(page.getByRole('heading', { name: 'Look at you grow.' })).toBeVisible();
-  const data = await page.evaluate(() => JSON.parse(localStorage.getItem('little-strum.progress.v1')!));
+  const data = await page.evaluate(() => JSON.parse(localStorage.getItem('flashchords.progress.v1')!));
   expect(data.daily.ids).toEqual(['c', 'am', 'f']);
   expect(data.daily.completed).toEqual(['c', 'am', 'f']);
   expect(data.history).toHaveLength(7);
@@ -172,13 +191,13 @@ test('welcome and practice fit narrow phones and desktop', async ({ page }) => {
 
 test('corrupt storage is not overwritten', async ({ page }) => {
   await page.goto('/');
-  await page.evaluate(() => localStorage.setItem('little-strum.progress.v1', '{broken'));
+  await page.evaluate(() => localStorage.setItem('flashchords.progress.v1', '{broken'));
   await page.reload();
   await page.getByRole('button', { name: 'Let’s play' }).click();
   await expect(page.getByRole('alert')).toContainText('It has not been overwritten');
   await page.getByRole('button', { name: 'Practice without a microphone' }).click();
   await page.getByRole('button', { name: 'I got it' }).click();
-  expect(await page.evaluate(() => localStorage.getItem('little-strum.progress.v1'))).toBe('{broken');
+  expect(await page.evaluate(() => localStorage.getItem('flashchords.progress.v1'))).toBe('{broken');
 });
 
 test('microphone recognizes a synthetic strum and rejects a wrong chord', async ({ page }) => {
@@ -222,7 +241,7 @@ test('microphone recognizes a synthetic strum and rejects a wrong chord', async 
   await expect(page.getByText('Lovely strum!')).toHaveCount(0);
   await page.evaluate(() => (window as unknown as { strum: (n: number[]) => void }).strum([440, 261.626, 329.628, 440]));
   await expect(page.getByText('Lovely strum!')).toBeVisible();
-  const history = await page.evaluate(() => JSON.parse(localStorage.getItem('little-strum.progress.v1')!).history);
+  const history = await page.evaluate(() => JSON.parse(localStorage.getItem('flashchords.progress.v1')!).history);
   expect(history).toHaveLength(2);
   expect(history.every((a: { manual: boolean }) => !a.manual)).toBe(true);
 });

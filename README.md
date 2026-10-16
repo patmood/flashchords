@@ -1,4 +1,4 @@
-# Little Strum
+# Flashchords
 
 A mobile-first ukulele practice app. TypeScript, Tailwind CSS, and Vite; no backend, accounts, remote fonts, or audio uploads.
 
@@ -43,6 +43,10 @@ git config core.hooksPath .githooks
 2. In **Settings → Pages → Build and deployment**, choose **Deploy from a branch**.
 3. Select the **main** branch and **/docs** folder, then save.
 
+Repository: https://github.com/patmood/flashchords
+
+Live site: https://patmood.github.io/flashchords/
+
 The committed `docs/` directory is the production site. The `public/` directory
 contains source assets that Vite copies into `docs/`; it is not the build output.
 The included `.github/workflows/ci.yml` runs tests and verifies the build, but does
@@ -70,7 +74,7 @@ Vite’s relative base supports both `username.github.io/repository/` and root/c
 - Each card initially shows only the requested chord. After **20 active seconds**, or an early hint request, it reveals a G–C–E–A chord diagram with fret and finger positions. The card remains until microphone recognition or self-assessed success.
 - Success animates, saves the result, and advances after 1.4 seconds. Reduced-motion preferences are respected.
 - Backgrounding the app pauses the attempt and releases the microphone. Resume explicitly to reconnect.
-- Progress is stored under `little-strum.progress.v1` in this browser’s local storage. Private browsing, changing devices/browsers, or clearing site data may lose progress. Settings provide a JSON data export and a confirmed reset. Export is for retaining/inspecting data; this version has no import UI.
+- Progress is stored under `flashchords.progress.v1` in this browser’s local storage; the welcome preference uses `flashchords.hide-welcome.v1`. Existing keys from the previous app name are migrated automatically on the same origin, without deleting the original data. Private browsing, changing devices/browsers, or clearing site data may lose progress. Settings provide a JSON data export and a confirmed reset. Export is for retaining/inspecting data; this version has no import UI.
 - Unreadable saved data is not overwritten. Storage failures are surfaced rather than silently claiming durable persistence.
 
 ## Spaced repetition

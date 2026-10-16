@@ -18,7 +18,7 @@ export interface Progress {
   history: Attempt[];
   daily: { date: string; ids: string[]; completed: string[] } | null;
 }
-export const STORAGE_KEY = 'little-strum.progress.v1';
+export { STORAGE_KEY } from './storage';
 const engine = fsrs(generatorParameters({ request_retention: 0.9, enable_fuzz: true }));
 export const emptyProgress = (): Progress => ({ version: 1, cards: {}, history: [], daily: null });
 

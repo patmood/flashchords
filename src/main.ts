@@ -3,13 +3,14 @@ import { CHORDS, diagram } from './chords';
 import { ChordMicrophone } from './audio';
 import { dayKey, emptyProgress, ensureSession, loadProgress, nextExtraChord, recordAttempt, STORAGE_KEY } from './scheduler';
 import type { Progress } from './scheduler';
+import { readStoredValue, WELCOME_KEY } from './storage';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 const microphone = new ChordMicrophone();
 let progress: Progress;
 let storageWarning = '';
 let preserveStoredData = false;
-try { progress = loadProgress(localStorage.getItem(STORAGE_KEY)); }
+try { progress = loadProgress(readStoredValue(STORAGE_KEY)); }
 catch {
   progress = emptyProgress();
   preserveStoredData = true;
@@ -57,7 +58,7 @@ function save() {
 function shell(content: string): string {
   return `<div class="mx-auto max-w-5xl px-5 pb-[max(28px,env(safe-area-inset-bottom))] sm:px-10">
     <header class="flex h-20 items-center justify-between border-b border-ink/10">
-      <button data-action="practice" aria-label="Little Strum practice" class="flex shrink-0 items-center gap-1.5 text-lg font-bold tracking-tight sm:gap-2.5 sm:text-xl"> <span class="flex h-9 w-9 items-center justify-center rounded-2xl bg-sage sm:h-10 sm:w-10"><img src="${import.meta.env.BASE_URL}favicon.svg" class="h-8 w-8 sm:h-9 sm:w-9" alt="" /></span>little strum<span class="mb-3 hidden h-1.5 w-1.5 rounded-full bg-[#c39b55] sm:block"></span></button>
+      <button data-action="practice" aria-label="Flashchords practice" class="flex shrink-0 items-center gap-1.5 text-lg font-bold tracking-tight sm:gap-2.5 sm:text-xl"> <span class="flex h-9 w-9 items-center justify-center rounded-2xl bg-sage sm:h-10 sm:w-10"><img src="${import.meta.env.BASE_URL}favicon.svg" class="h-8 w-8 sm:h-9 sm:w-9" alt="" /></span>flashchords<span class="mb-3 hidden h-1.5 w-1.5 rounded-full bg-[#c39b55] sm:block"></span></button>
       <nav aria-label="Main navigation" class="flex gap-2 sm:gap-5">
         <button data-action="practice" class="nav-button ${view === 'practice' || view === 'complete' ? 'active' : ''}" ${view === 'practice' ? 'aria-current="page"' : ''}>${icon('sun')}<span class="hidden sm:inline">Practice</span><span class="sr-only sm:hidden">Practice</span></button>
         <button data-action="progress" class="nav-button ${view === 'progress' ? 'active' : ''}" ${view === 'progress' ? 'aria-current="page"' : ''}>${icon('chart')}<span class="hidden sm:inline">Progress</span><span class="sr-only sm:hidden">Progress</span></button>
@@ -69,11 +70,9 @@ function shell(content: string): string {
   </div>`;
 }
 
-const WELCOME_KEY = 'little-strum.hide-welcome.v1';
-
 function showWelcome() {
   if (document.querySelector('#welcome-dialog')) return;
-  try { if (localStorage.getItem(WELCOME_KEY) === 'true') return; }
+  try { if (readStoredValue(WELCOME_KEY) === 'true') return; }
   catch { /* A blocked preference store should not block practice. */ }
   const dialog = document.createElement('dialog');
   dialog.id = 'welcome-dialog';
@@ -81,7 +80,7 @@ function showWelcome() {
   dialog.setAttribute('aria-labelledby', 'welcome-title');
   dialog.setAttribute('aria-describedby', 'welcome-description');
   dialog.innerHTML = `<div class="mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-sage text-forest">${icon('leaf', 'h-6 w-6')}</div>
-    <h2 id="welcome-title" class="font-serif text-3xl">Welcome to Little Strum.</h2>
+    <h2 id="welcome-title" class="font-serif text-3xl">Welcome to Flashchords.</h2>
     <div id="welcome-description" class="mt-4 space-y-3 text-sm leading-6 text-ink/70"><p>Play the chord on the card. A fingering hint appears after <strong>20 seconds</strong>, or whenever you ask.</p><p>Use a tuned <strong>high-G ukulele (G–C–E–A)</strong>. Enable your microphone to check strums, or practice manually with “I got it”. Audio stays on your device.</p><p>Short daily sessions and spaced repetition help the shapes stick. Your progress saves in this browser.</p></div>
     <label class="my-5 flex min-h-11 cursor-pointer items-center gap-3 text-sm"><input id="hide-welcome" type="checkbox" class="h-5 w-5 accent-forest" />Don’t show again</label>
     <button id="dismiss-welcome" class="primary" autofocus>Let’s play</button>`;
@@ -114,7 +113,7 @@ function practice() {
   const percent = daily.completed.length / daily.ids.length * 100;
   return `<section class="mx-auto max-w-lg py-6 sm:py-9">${practiceMode === 'extra'
     ? `<div class="mb-6 flex items-center justify-between text-xs text-ink/60"><span>Extra practice · no finish line</span><span>${extraCount} played</span></div>`
-    : `<div class="mb-3 flex items-center justify-between text-xs text-ink/60"><span>Today’s little session</span><span>${daily.completed.length} of ${daily.ids.length} complete</span></div><div class="mb-6 h-1.5 overflow-hidden rounded-full bg-ink/10"><div class="h-full rounded-full bg-[#7d9b75] transition-all" style="width:${percent}%"></div></div>`}
+    : `<div class="mb-3 flex items-center justify-between text-xs text-ink/60"><span>Today’s session</span><span>${daily.completed.length} of ${daily.ids.length} complete</span></div><div class="mb-6 h-1.5 overflow-hidden rounded-full bg-ink/10"><div class="h-full rounded-full bg-[#7d9b75] transition-all" style="width:${percent}%"></div></div>`}
     <div class="panel card-enter relative overflow-hidden text-center ${successful ? 'success-card !border-[#a2bf97] !bg-[#edf3e6]' : ''}">
       <p class="eyebrow">${successful ? 'That’s the one!' : progress.cards[currentId] ? 'A familiar friend' : 'Meet your next chord'}</p>
       <h1 class="my-3 font-serif text-[88px] leading-none tracking-tight sm:text-[104px]">${chord.name}</h1><p class="text-sm text-ink/60">${chord.label}</p>
@@ -297,15 +296,15 @@ app.addEventListener('click', event => {
     case 'finish-extra': navigate('complete'); break;
     case 'export': {
       let data = JSON.stringify(progress, null, 2);
-      if (preserveStoredData) { try { data = localStorage.getItem(STORAGE_KEY) || data; } catch { /* export current in-memory data */ } }
+      if (preserveStoredData) { try { data = readStoredValue(STORAGE_KEY) || data; } catch { /* export current in-memory data */ } }
       const url = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
       const link = document.createElement('a');
-      link.href = url; link.download = `little-strum-${dayKey()}.json`; link.click();
+      link.href = url; link.download = `flashchords-${dayKey()}.json`; link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       break;
     }
     case 'reset':
-      if (confirm('Reset all Little Strum progress on this device? This cannot be undone.')) {
+      if (confirm('Reset all Flashchords progress on this device? This cannot be undone.')) {
         progress = emptyProgress(); preserveStoredData = false; storageWarning = ''; save(); openPractice();
       }
       break;

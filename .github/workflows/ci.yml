@@ -1,4 +1,4 @@
-name: Check Little Strum
+name: Check Flashchords
 on:
   push:
     branches: [main]
