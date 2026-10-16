@@ -4,9 +4,16 @@ import { ChordMicrophone } from './audio';
 import { dayKey, emptyProgress, ensureSession, loadProgress, nextExtraChord, recordAttempt, STORAGE_KEY } from './scheduler';
 import type { Progress } from './scheduler';
 import { readStoredValue, WELCOME_KEY } from './storage';
+import { ChordSound, SOUND_KEY } from './sounds';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 const microphone = new ChordMicrophone();
+const chordSound = new ChordSound();
+let soundEnabled = true;
+try { soundEnabled = localStorage.getItem(SOUND_KEY) !== 'false'; } catch { /* Use the default. */ }
+let previewing = false;
+let previewRequest = 0;
+let appReady = false;
 let progress: Progress;
 let storageWarning = '';
 let preserveStoredData = false;
@@ -45,6 +52,7 @@ const icons: Record<string, string> = {
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   close: '<path d="m6 6 12 12M6 18 18 6"/>',
   book: '<path d="M12 5C9 3 5 3 2 4v15c3-1 7-1 10 1 3-2 7-2 10-1V4c-3-1-7-1-10 1Zm0 0v15"/>',
+  speaker: '<path d="m11 4-6 5H2v6h3l6 5Zm4 4a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/>',
 };
 const icon = (name: string, cls = 'h-5 w-5') => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.leaf}</svg>`;
 const escapeHtml = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -94,6 +102,7 @@ function showWelcome() {
     }
     dialog.close();
     dialog.remove();
+    void playPreview();
     document.querySelector<HTMLElement>('[data-action="enable-mic"], main button')?.focus();
   };
   dialog.querySelector('#dismiss-welcome')!.addEventListener('click', dismiss);
@@ -107,21 +116,49 @@ function showWelcome() {
 
 function currentSeconds() { return elapsed + (activeSince !== null ? (performance.now() - activeSince) / 1000 : 0); }
 
+function stopPreview(resumeTimer = false) {
+  const resume = previewing && resumeTimer && hasStarted && !paused && !successful;
+  previewRequest++;
+  chordSound.stop();
+  previewing = false;
+  if (resume) activeSince = performance.now();
+}
+
+async function playPreview(force = false) {
+  if (view !== 'practice' || successful || document.hidden || (!soundEnabled && !force)) return;
+  stopPreview(true);
+  const token = ++previewRequest;
+  const chord = CHORDS.find(c => c.id === currentId)!;
+  elapsed = currentSeconds();
+  activeSince = null;
+  previewing = true;
+  render();
+  await chordSound.play(chord);
+  if (token !== previewRequest) return;
+  previewing = false;
+  microphone.arm();
+  if (!paused && hasStarted) activeSince = performance.now();
+  render();
+}
+
 function practice() {
   const chord = CHORDS.find(c => c.id === currentId)!;
   const daily = progress.daily!;
   const percent = daily.completed.length / daily.ids.length * 100;
+  const listeningStatus = previewing ? 'Playing chord reference…' : !hasStarted ? 'Ready for your first strum?' : paused ? 'Practice paused' : manual ? 'Manual mode · self-assessed' : 'Let the strings go quiet, then strum.';
+  const hintStatus = previewing ? 'Listen first. Your practice timer is paused.' : !hasStarted ? 'Choose a practice mode below to begin.' : hinted ? 'Finger numbers are shown inside the dots.' : `Fingering appears in ${Math.max(0, Math.ceil(20 - currentSeconds()))}s`;
   return `<section class="mx-auto max-w-lg py-6 sm:py-9">${practiceMode === 'extra'
     ? `<div class="mb-6 flex items-center justify-between text-xs text-ink/60"><span>Extra practice · no finish line</span><span>${extraCount} played</span></div>`
     : `<div class="mb-3 flex items-center justify-between text-xs text-ink/60"><span>Today’s session</span><span>${daily.completed.length} of ${daily.ids.length} complete</span></div><div class="mb-6 h-1.5 overflow-hidden rounded-full bg-ink/10"><div class="h-full rounded-full bg-[#7d9b75] transition-all" style="width:${percent}%"></div></div>`}
-    <div class="panel card-enter relative overflow-hidden text-center ${successful ? 'success-card !border-[#a2bf97] !bg-[#edf3e6]' : ''}">
+    <div class="panel relative overflow-hidden text-center ${successful ? 'success-card !border-[#a2bf97] !bg-[#edf3e6]' : ''}">
       <p class="eyebrow">${successful ? 'That’s the one!' : progress.cards[currentId] ? 'A familiar friend' : 'Meet your next chord'}</p>
       <h1 class="my-3 font-serif text-[88px] leading-none tracking-tight sm:text-[104px]">${chord.name}</h1><p class="text-sm text-ink/60">${chord.label}</p>
-      <div id="fingering" class="mt-5 ${hinted ? '' : 'hidden'}">${diagram(chord)}<p class="mx-auto mt-3 max-w-xs text-xs leading-6 text-ink/65">${chord.tip}</p></div>
-      <div id="recall-space" class="${hinted ? 'hidden' : 'flex'} min-h-36 flex-col items-center justify-center"><span class="mb-3 text-[#a2ae90]">${icon('leaf', 'h-8 w-8')}</span><p class="text-sm text-ink/60">Take a breath. Find the shape.</p></div>
-      ${successful ? `<div class="my-5 flex items-center justify-center gap-2 font-bold text-forest">${icon('check')} ${successManual ? 'Self-assessed. Nice practice!' : 'Lovely strum!'}</div><div class="confetti">${Array.from({ length: 18 }, (_, i) => `<i style="--x:${Math.cos(i * 2.4) * 210}px;--y:${Math.sin(i * 2.4) * 190}px;--r:${i * 63}deg"></i>`).join('')}</div>` : `<div class="mt-4 border-t border-ink/10 pt-5"><div class="flex min-h-7 items-center justify-center gap-3"><div id="meter" class="${manual || paused ? 'hidden' : 'flex'} h-6 items-center gap-1" aria-hidden="true">${Array.from({ length: 7 }, () => '<i class="meter-bar h-1"></i>').join('')}</div><p id="listening-status" class="text-sm text-forest" role="status">${!hasStarted ? 'Ready for your first strum?' : paused ? 'Practice paused' : manual ? 'Manual mode · self-assessed' : 'Let the strings go quiet, then strum.'}</p></div><p id="hint-countdown" class="mt-3 text-xs text-ink/50">${!hasStarted ? 'Choose a practice mode below to begin.' : hinted ? 'Finger numbers are shown inside the dots.' : `Fingering appears in ${Math.max(0, Math.ceil(20 - currentSeconds()))}s`}</p></div>`}
+      ${successful ? `<div id="success-fingering" class="success-diagram mx-auto mt-4">${diagram(chord)}</div>` : `<div class="mt-2 flex items-center justify-center gap-4 text-xs text-forest"><button data-action="play-chord" class="flex min-h-11 items-center gap-2" aria-label="Play ${chord.label}" ${previewing ? 'disabled' : ''}>${icon('speaker', 'h-4 w-4')}Hear chord</button><button data-action="toggle-sound" class="min-h-11 text-ink/60 underline underline-offset-4" aria-label="Turn automatic chord sound ${soundEnabled ? 'off' : 'on'}" aria-pressed="${soundEnabled}">Auto sound ${soundEnabled ? 'on' : 'off'}</button></div>`}
+      <div id="fingering" class="mt-5 ${hinted && !successful ? '' : 'hidden'}">${diagram(chord)}<p class="mx-auto mt-3 max-w-xs text-xs leading-6 text-ink/65">${chord.tip}</p></div>
+      <div id="recall-space" class="${hinted || successful ? 'hidden' : 'flex'} min-h-24 flex-col items-center justify-center"><span class="mb-3 text-[#a2ae90]">${icon('leaf', 'h-8 w-8')}</span><p class="text-sm text-ink/60">Take a breath. Find the shape.</p></div>
+      ${successful ? `<div class="my-5 flex items-center justify-center gap-2 font-bold text-forest">${icon('check')} ${successManual ? 'Self-assessed. Nice practice!' : 'Lovely strum!'}</div><div class="confetti">${Array.from({ length: 18 }, (_, i) => `<i style="--x:${Math.cos(i * 2.4) * 210}px;--y:${Math.sin(i * 2.4) * 190}px;--r:${i * 63}deg"></i>`).join('')}</div>` : `<div class="mt-4 border-t border-ink/10 pt-5"><div class="flex min-h-7 items-center justify-center gap-3"><div id="meter" class="${manual || paused || previewing ? 'hidden' : 'flex'} h-6 items-center gap-1" aria-hidden="true">${Array.from({ length: 7 }, () => '<i class="meter-bar h-1"></i>').join('')}</div><p id="listening-status" class="text-sm text-forest" role="status">${listeningStatus}</p></div><p id="hint-countdown" class="mt-3 text-xs text-ink/50">${hintStatus}</p></div>`}
     </div>
-    <div class="mt-5" id="practice-controls">${successful ? '<p role="status" class="py-4 text-center text-sm text-forest">Progress saved for this session. On to the next…</p>' : !hasStarted ? `<button data-action="enable-mic" class="primary" ${starting ? 'disabled' : ''}>${icon('mic')} ${starting ? 'Waiting for microphone permission…' : 'Enable microphone & begin'}</button><button data-action="manual" class="mt-2 min-h-12 w-full text-sm font-bold underline decoration-ink/25 underline-offset-4">Practice without a microphone</button>` : paused ? `<button data-action="resume" class="primary" ${starting ? 'disabled' : ''}>${starting ? 'Reconnecting…' : 'Resume practice'}</button>` : `<div class="grid grid-cols-2 gap-3"><button data-action="hint" class="secondary" ${hinted ? 'disabled' : ''}>${icon('book')} ${hinted ? 'Fingering shown' : 'Show fingering'}</button><button data-action="got-it" class="secondary !border-forest/30 !text-forest">${icon('check')} I got it</button></div><p class="mt-3 text-center text-[11px] leading-5 text-ink/55">${manual ? 'Play the chord, then tap “I got it” when you’re happy with it.' : 'Not picking it up? “I got it” records a self-assessed attempt.'}</p>`}</div>
+    <div class="mt-5" id="practice-controls">${successful ? '<p role="status" class="py-4 text-center text-sm text-forest">Progress saved for this session. On to the next…</p>' : !hasStarted ? `<button data-action="enable-mic" class="primary" ${starting ? 'disabled' : ''}>${icon('mic')} ${starting ? 'Waiting for microphone permission…' : 'Enable microphone & begin'}</button><button data-action="manual" class="mt-2 min-h-12 w-full text-sm font-bold underline decoration-ink/25 underline-offset-4">Practice without a microphone</button>` : paused ? `<button data-action="resume" class="primary" ${starting ? 'disabled' : ''}>${starting ? 'Reconnecting…' : 'Resume practice'}</button>` : `<div class="grid grid-cols-2 gap-3"><button data-action="hint" class="secondary" ${hinted || previewing ? 'disabled' : ''}>${icon('book')} ${hinted ? 'Fingering shown' : 'Show fingering'}</button><button data-action="got-it" class="secondary !border-forest/30 !text-forest" ${previewing ? 'disabled' : ''}>${icon('check')} I got it</button></div><p class="mt-3 text-center text-[11px] leading-5 text-ink/55">${manual ? 'Play the chord, then tap “I got it” when you’re happy with it.' : 'Not picking it up? “I got it” records a self-assessed attempt.'}</p>`}</div>
     ${error ? `<div role="alert" class="mt-4 rounded-xl bg-[#f7e7cd] p-4 text-sm">${escapeHtml(error)}${hasStarted ? '<button data-action="switch-manual" class="mt-3 block font-bold underline">Use manual mode</button>' : ''}</div>` : ''}
     ${practiceMode === 'extra' ? '<button data-action="finish-extra" class="mt-4 min-h-12 w-full text-sm text-ink/65 underline underline-offset-4">Finish extra practice</button><p class="text-center text-[11px] leading-5 text-ink/55">Due reviews first. A new chord after every 3 extra reviews when nothing is due. Stop whenever you like.</p>' : ''}
   </section>`;
@@ -160,6 +197,7 @@ function render(focus = false) {
 }
 
 function stopActivity() {
+  stopPreview();
   requestId++;
   starting = false;
   microphone.stop();
@@ -184,6 +222,7 @@ function openPractice() {
 }
 
 function nextCard(start = true) {
+  stopPreview();
   const remaining = progress.daily!.ids.filter(id => !progress.daily!.completed.includes(id));
   const nextId = practiceMode === 'extra' ? nextExtraChord(progress, currentId) : remaining[0];
   if (!nextId) { navigate('complete'); return; }
@@ -197,16 +236,17 @@ function nextCard(start = true) {
   microphone.arm();
   view = 'practice';
   render(true);
+  if (appReady && !document.querySelector('#welcome-dialog')) void playPreview();
 }
 
 function revealHint() {
-  if (hinted || successful || paused || view !== 'practice') return;
+  if (hinted || successful || paused || previewing || view !== 'practice') return;
   hinted = true;
   render();
 }
 
 function succeed(selfAssessed: boolean) {
-  if (view !== 'practice' || successful || paused) return;
+  if (view !== 'practice' || successful || paused || previewing) return;
   // The time threshold still counts as a hint if a tap beats the UI timer tick.
   if (currentSeconds() >= 20) hinted = true;
   progress = recordAttempt(progress, { chordId: currentId, hinted, manual: selfAssessed, seconds: currentSeconds(), extra: practiceMode === 'extra' });
@@ -220,7 +260,7 @@ function succeed(selfAssessed: boolean) {
 }
 
 function onAudioFrame(d: { chordId: string | null; level: number; listening: boolean }) {
-  if (view !== 'practice' || paused || successful) return;
+  if (view !== 'practice' || paused || successful || previewing) return;
   const status = document.querySelector('#listening-status');
   if (status) status.textContent = !d.listening ? 'Let the strings go quiet, then strum.' : d.level < .008 ? 'Listening for your strum…' : 'Listening… let all four strings ring.';
   document.querySelectorAll<HTMLElement>('.meter-bar').forEach((bar, i) => {
@@ -233,6 +273,7 @@ function audioError(message: string) {
   if (view !== 'practice') return;
   elapsed = currentSeconds();
   activeSince = null;
+  stopPreview();
   paused = true;
   error = message;
   render();
@@ -241,6 +282,8 @@ function audioError(message: string) {
 async function begin(useManual: boolean, resume = false) {
   if (starting && !useManual) return;
   if (starting) stopActivity();
+  stopPreview();
+  if (soundEnabled) void chordSound.unlock();
   manual = useManual;
   modeSelected = true;
   error = '';
@@ -264,6 +307,7 @@ async function begin(useManual: boolean, resume = false) {
     hasStarted = true;
     activeSince = performance.now();
     render();
+    void playPreview();
   } else {
     progress = ensureSession(progress);
     save();
@@ -286,6 +330,14 @@ app.addEventListener('click', event => {
     case 'switch-manual': microphone.stop(); void begin(true, true); break;
     case 'hint': revealHint(); break;
     case 'got-it': succeed(true); break;
+    case 'play-chord': void playPreview(true); break;
+    case 'toggle-sound':
+      soundEnabled = !soundEnabled;
+      try { localStorage.setItem(SOUND_KEY, String(soundEnabled)); }
+      catch { storageWarning = 'Your browser could not save the sound preference.'; }
+      if (soundEnabled) void playPreview();
+      else { stopPreview(true); microphone.arm(); render(); }
+      break;
     case 'start-extra':
       stopActivity();
       practiceMode = 'extra';
@@ -312,7 +364,7 @@ app.addEventListener('click', event => {
 });
 
 setInterval(() => {
-  if (view !== 'practice' || paused || successful) return;
+  if (view !== 'practice' || paused || successful || previewing) return;
   const seconds = currentSeconds();
   if (!hinted && seconds >= 20) revealHint();
   const countdown = document.querySelector('#hint-countdown');
@@ -327,6 +379,8 @@ document.addEventListener('visibilitychange', () => {
     render();
   }
   if (view !== 'practice') return;
+  const wasPreviewing = previewing;
+  if (previewing) stopPreview();
   if (successful) {
     clearTimeout(transitionTimer);
     microphone.stop();
@@ -334,13 +388,18 @@ document.addEventListener('visibilitychange', () => {
     else openPractice();
     return;
   }
-  if (paused) return;
+  if (paused) {
+    if (wasPreviewing) render();
+    return;
+  }
   elapsed = currentSeconds();
   activeSince = null;
   paused = true;
   microphone.stop();
   render();
 });
-window.addEventListener('pagehide', () => microphone.stop());
+window.addEventListener('pagehide', () => { microphone.stop(); chordSound.close(); });
 openPractice();
 showWelcome();
+appReady = true;
+if (!document.querySelector('#welcome-dialog')) void playPreview();

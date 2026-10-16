@@ -73,6 +73,15 @@ Vite’s relative base supports both `username.github.io/repository/` and root/c
   completion. New extra-practice chords also receive normal FSRS schedules.
 - Each card initially shows only the requested chord. After **20 active seconds**, or an early hint request, it reveals a G–C–E–A chord diagram with fret and finger positions. The card remains until microphone recognition or self-assessed success.
 - Success animates, saves the result, and advances after 1.4 seconds. Reduced-motion preferences are respected.
+- Success cards include a compact fingering diagram, even for unassisted attempts.
+- A synthesized, ukulele-like strum previews each card using its actual high-G
+  voicing. **Hear chord** replays it, and **Auto sound** toggles automatic previews
+  (saved on this device). Microphone checking and the 20-second practice timer are
+  suspended during playback, including a short quiet tail, so the app cannot answer
+  its own card. Playback stops when leaving practice or backgrounding the app.
+  Browsers may block the first automatic sound until a tap; dismissing the welcome,
+  choosing a practice mode, or tapping **Hear chord** unlocks audio. No external
+  samples, network requests, or recordings are used.
 - Backgrounding the app pauses the attempt and releases the microphone. Resume explicitly to reconnect.
 - Progress is stored under `flashchords.progress.v1` in this browser’s local storage; the welcome preference uses `flashchords.hide-welcome.v1`. Existing keys from the previous app name are migrated automatically on the same origin, without deleting the original data. Private browsing, changing devices/browsers, or clearing site data may lose progress. Settings provide a JSON data export and a confirmed reset. Export is for retaining/inspecting data; this version has no import UI.
 - Unreadable saved data is not overwritten. Storage failures are surfaced rather than silently claiming durable persistence.

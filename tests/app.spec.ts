@@ -1,5 +1,109 @@
 import { expect, test } from '@playwright/test';
 
+test.beforeEach(async ({ page }, info) => {
+  // Timing tests use a virtual clock; real Web Audio playback is tested separately.
+  if (!info.title.startsWith('chord previews')) {
+    await page.addInitScript(() => localStorage.setItem('flashchords.chord-sounds.v1', 'false'));
+  }
+});
+
+test('chord previews play on new cards, support replay and mute, and show success fingerings', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.assign(window, { previewStarts: 0 });
+    const original = AudioBufferSourceNode.prototype.start;
+    AudioBufferSourceNode.prototype.start = function (when = 0, offset = 0, duration?: number) {
+      (window as unknown as { previewStarts: number }).previewStarts++;
+      original.call(this, when, offset, duration);
+    };
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Let’s play' }).click();
+  await expect(page.getByText('Playing chord reference…')).toBeVisible();
+  await page.getByRole('button', { name: 'Practice without a microphone' }).click();
+  await expect(page.getByRole('button', { name: 'I got it' })).toBeDisabled();
+  await expect(page.getByText('Listen first. Your practice timer is paused.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'I got it' })).toBeEnabled();
+  await expect(page.locator('#fingering')).toBeHidden();
+  await page.getByRole('button', { name: 'I got it' }).click();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('flashchords.progress.v1')!).history[0].seconds)).toBeLessThan(1);
+  await expect(page.locator('#success-fingering').getByRole('img', { name: /C major/ })).toBeVisible();
+  expect(await page.locator('#success-fingering svg').evaluate(el => getComputedStyle(el).width)).toBe('112px');
+  await expect(page.getByRole('heading', { name: 'Am', exact: true })).toBeVisible();
+  await expect(page.getByText('Playing chord reference…')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Play A minor' })).toBeEnabled();
+  expect(await page.evaluate(() => (window as unknown as { previewStarts: number }).previewStarts)).toBeGreaterThanOrEqual(3);
+  await page.getByRole('button', { name: 'Play A minor' }).click();
+  await expect(page.getByText('Playing chord reference…')).toBeVisible();
+  await page.getByRole('button', { name: 'Turn automatic chord sound off' }).click();
+  await expect(page.getByRole('button', { name: 'I got it' })).toBeEnabled();
+  const count = await page.evaluate(() => (window as unknown as { previewStarts: number }).previewStarts);
+  await page.getByRole('button', { name: 'I got it' }).click();
+  await expect(page.getByRole('heading', { name: 'F', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'I got it' })).toBeEnabled();
+  expect(await page.evaluate(() => (window as unknown as { previewStarts: number }).previewStarts)).toBe(count);
+  await page.reload();
+  await page.getByRole('button', { name: 'Let’s play' }).click();
+  await expect(page.getByRole('button', { name: 'Turn automatic chord sound on' })).toBeVisible();
+});
+
+test('chord previews never count their own playback as a microphone answer', async ({ page }) => {
+  await page.addInitScript(() => {
+    let micContext: AudioContext | null = null;
+    let destination: MediaStreamAudioDestinationNode | null = null;
+    navigator.mediaDevices.getUserMedia = async () => {
+      micContext = new AudioContext();
+      await micContext.resume();
+      destination = micContext.createMediaStreamDestination();
+      return destination.stream;
+    };
+    const original = AudioBufferSourceNode.prototype.start;
+    AudioBufferSourceNode.prototype.start = function (when = 0, offset = 0, duration?: number) {
+      // Deliberately feed the reference audio back into the "microphone".
+      if (micContext && destination && this.context !== micContext && this.buffer) {
+        const echo = micContext.createBufferSource();
+        echo.buffer = this.buffer;
+        echo.connect(destination);
+        original.call(echo, 0, offset, duration);
+      }
+      original.call(this, when, offset, duration);
+    };
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Let’s play' }).click();
+  await page.getByRole('button', { name: 'Enable microphone & begin' }).click();
+  await expect(page.getByText('Playing chord reference…')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'I got it' })).toBeDisabled();
+  await expect(page.getByText('Listening for your strum…')).toBeVisible();
+  await page.waitForTimeout(500);
+  await expect(page.getByRole('heading', { name: 'C', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('flashchords.progress.v1')!).history)).toHaveLength(0);
+  await page.getByRole('button', { name: 'Play C major' }).click();
+  await expect(page.getByText('Playing chord reference…')).toBeVisible();
+  await expect(page.getByText('Listening for your strum…')).toBeVisible();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('flashchords.progress.v1')!).history)).toHaveLength(0);
+  await page.getByRole('button', { name: 'I got it' }).click();
+  await expect(page.locator('#success-fingering')).toBeVisible();
+});
+
+test('chord previews stop cleanly when backgrounded or leaving practice', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Let’s play' }).click();
+  await expect(page.getByText('Playing chord reference…')).toBeVisible();
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect(page.getByRole('button', { name: 'Play C major' })).toBeEnabled();
+  await expect(page.getByText('Playing chord reference…')).toHaveCount(0);
+  await page.evaluate(() => Object.defineProperty(document, 'hidden', { configurable: true, value: false }));
+  await page.getByRole('button', { name: 'Play C major' }).click();
+  await expect(page.getByText('Playing chord reference…')).toBeVisible();
+  await page.getByRole('button', { name: 'Progress', exact: true }).click();
+  await page.waitForTimeout(1_400);
+  await expect(page.getByRole('heading', { name: 'Your growing chord garden.' })).toBeVisible();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('flashchords.progress.v1')!).history)).toHaveLength(0);
+});
+
 test('opens on the chord and waits to start, with no landing or setup page', async ({ page }) => {
   await page.clock.install();
   await page.addInitScript(() => {
@@ -79,6 +183,7 @@ test('mobile daily practice, hint timing, persistence, and completion', async ({
   await expect(page.locator('#fingering')).toBeVisible();
   await page.getByRole('button', { name: 'I got it' }).click();
   await expect(page.getByText('Self-assessed. Nice practice!')).toBeVisible();
+  await expect(page.locator('#success-fingering').getByRole('img', { name: /C major/ })).toBeVisible();
   await page.clock.fastForward(1_500);
   await expect(page.getByRole('heading', { name: 'Am', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Progress', exact: true }).click();
@@ -92,6 +197,7 @@ test('mobile daily practice, hint timing, persistence, and completion', async ({
   await page.getByRole('button', { name: 'Show fingering' }).click();
   await expect(page.getByRole('img', { name: /F major: G C E A/ })).toBeVisible();
   await page.getByRole('button', { name: 'I got it' }).click();
+  await expect(page.locator('#success-fingering').getByRole('img', { name: /F major/ })).toBeVisible();
   await page.clock.fastForward(1_500);
   await expect(page.getByRole('heading', { name: 'Look at you grow.' })).toBeVisible();
   const data = await page.evaluate(() => JSON.parse(localStorage.getItem('flashchords.progress.v1')!));
