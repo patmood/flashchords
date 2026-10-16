@@ -15,7 +15,7 @@ Microphone access works on `localhost` or HTTPS. Opening the dev server’s plai
 
 ```sh
 npm test             # Scheduling, persistence, and synthetic audio tests
-npm run build        # Type-check + production bundle in dist/
+npm run build        # Type-check + production bundle in docs/
 npm run preview      # Preview the production build
 npx playwright install chromium
 npm run test:e2e     # Mobile-browser interaction tests
@@ -26,8 +26,10 @@ npm run test:e2e     # Mobile-browser interaction tests
 ### Git hook
 
 This repository includes a versioned pre-commit hook that runs `npm run build`.
-A failed type-check or static build blocks the commit. Build output stays in
-ignored `dist/`; GitHub Actions builds and deploys it separately.
+A failed type-check or static build blocks the commit. After a successful build,
+the hook stages `docs/` automatically so each commit includes the current static
+site for GitHub Pages. Avoid committing unrelated changes while app edits are
+unfinished: the hook builds the current working tree, including unstaged edits.
 
 Enable the hook after cloning (Git does not copy local hook configuration):
 
@@ -38,8 +40,13 @@ git config core.hooksPath .githooks
 ### Publish
 
 1. Create a GitHub repository and push this project to its `main` branch.
-2. In **Settings → Pages → Build and deployment**, choose **GitHub Actions**.
-3. The included `.github/workflows/deploy.yml` tests, builds, and publishes the app on pushes to `main`. It can also be run manually from Actions.
+2. In **Settings → Pages → Build and deployment**, choose **Deploy from a branch**.
+3. Select the **main** branch and **/docs** folder, then save.
+
+The committed `docs/` directory is the production site. The `public/` directory
+contains source assets that Vite copies into `docs/`; it is not the build output.
+The included `.github/workflows/ci.yml` runs tests and verifies the build, but does
+not deploy a separate Pages artifact. A `.nojekyll` file disables Jekyll processing.
 
 Vite’s relative base supports both `username.github.io/repository/` and root/custom-domain hosting. No server-side routing configuration or environment secrets are needed. GitHub Pages supplies the HTTPS required by microphone APIs.
 

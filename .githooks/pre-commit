@@ -4,3 +4,4 @@ set -eu
 cd "$(git rev-parse --show-toplevel)"
 printf '%s\n' 'Building the GitHub Pages site before commit…'
 npm run build
+git add -- docs
