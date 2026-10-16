@@ -59,6 +59,14 @@ Vite’s relative base supports both `username.github.io/repository/` and root/c
 - Standard re-entrant **G4 C4 E4 A4** tuning only.
 - 20 chords, ordered from easy, useful shapes to later challenges: C, Am, F, G, C7, A, G7, A7, Em, Dm, D, E7, D7, Am7, Em7, Cm, Gm, B♭, Bm, E.
 - A daily queue contains oldest-due reviews first, then up to **3 new chords**, capped at **15 distinct chords**. It is fixed once practice starts and resumes after reload. Days use the device’s local calendar date.
+- The daily completion screen is a natural stopping point, not a lockout. **Keep
+  practising** starts optional endless practice, with a **Finish extra practice**
+  button available at any time. Due reviews come first; when nothing is due, one
+  new chord is introduced after every **3 extra reviews**, in the deck’s learning
+  order. This interval is preserved in saved history across extra sessions and
+  reloads. After all 20 chords are introduced, reviews continue indefinitely.
+  Extra attempts update FSRS and history without changing the daily queue or its
+  completion. New extra-practice chords also receive normal FSRS schedules.
 - Each card initially shows only the requested chord. After **20 active seconds**, or an early hint request, it reveals a G–C–E–A chord diagram with fret and finger positions. The card remains until microphone recognition or self-assessed success.
 - Success animates, saves the result, and advances after 1.4 seconds. Reduced-motion preferences are respected.
 - Backgrounding the app pauses the attempt and releases the microphone. Resume explicitly to reconnect.
@@ -76,7 +84,7 @@ Uses the maintained `ts-fsrs` implementation of **FSRS**, with 90% desired reten
 | Unassisted, over 5 and up to 12 seconds | Good |
 | Unassisted, up to 5 seconds | Easy |
 
-Self-assessed attempts follow the same rules and are labeled in stored history. These time-based grades are a heuristic, not a validated assessment of musical skill. A hinted chord can become due shortly afterward, but is not repeated within the same daily queue; it is eligible for the next day’s session. This deliberately favors the agreed short daily format over in-session relearning loops. Due reviews not included in a capped session remain due.
+Self-assessed attempts follow the same rules and are labeled in stored history. These time-based grades are a heuristic, not a validated assessment of musical skill. A hinted chord can become due shortly afterward, but is not repeated within the same daily queue; it is eligible for optional extra practice or the next day’s session. Due reviews not included in a capped session remain due. Extra practice picks due cards first, otherwise the least recently reviewed introduced chord, and avoids immediate repeats when another introduced chord is available. The three-review interval for introducing more chords is a pacing heuristic separate from FSRS, which schedules reviews of introduced chords.
 
 ## Microphone recognition and limitations
 

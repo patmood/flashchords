@@ -95,6 +95,46 @@ test('microphone denial has an actionable manual fallback', async ({ page }) => 
   await expect(page.getByText('Manual mode · self-assessed')).toBeVisible();
 });
 
+test('daily session ends, but extra practice introduces new chords gradually and can stop anytime', async ({ page }) => {
+  await page.clock.install();
+  await page.goto('/');
+  await page.getByRole('checkbox', { name: 'Don’t show again' }).check();
+  await page.getByRole('button', { name: 'Let’s play' }).click();
+  await page.getByRole('button', { name: 'Practice without a microphone' }).click();
+  for (let i = 0; i < 3; i++) {
+    await page.getByRole('button', { name: 'I got it' }).click();
+    await page.clock.fastForward(1_500);
+  }
+  await expect(page.getByRole('heading', { name: 'Look at you grow.' })).toBeVisible();
+  await page.getByRole('button', { name: 'Keep practising' }).click();
+  await expect(page.getByText('Extra practice · no finish line')).toBeVisible();
+  for (let i = 0; i < 3; i++) {
+    await expect(page.getByRole('heading', { name: 'G', exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: 'I got it' }).click();
+    await page.clock.fastForward(1_500);
+  }
+  await expect(page.getByRole('heading', { name: 'G', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'I got it' }).click();
+  await page.getByRole('button', { name: 'Finish extra practice' }).click();
+  await page.clock.fastForward(2_000);
+  await expect(page.getByRole('heading', { name: 'Look at you grow.' })).toBeVisible();
+  const data = await page.evaluate(() => JSON.parse(localStorage.getItem('little-strum.progress.v1')!));
+  expect(data.daily.ids).toEqual(['c', 'am', 'f']);
+  expect(data.daily.completed).toEqual(['c', 'am', 'f']);
+  expect(data.history).toHaveLength(7);
+  expect(data.history.filter((a: { extra?: boolean }) => a.extra)).toHaveLength(4);
+  expect(Object.keys(data.cards)).toHaveLength(4);
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Look at you grow.' })).toBeVisible();
+  await page.getByRole('button', { name: 'Keep practising' }).click();
+  await expect(page.getByText('Extra practice · no finish line')).toBeVisible();
+  // A reload needs an explicit microphone choice; manual remains available.
+  const nextChord = await page.locator('main h1').innerText();
+  await page.getByRole('button', { name: 'Practice without a microphone' }).click();
+  await expect(page.getByRole('heading', { name: nextChord, exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Finish extra practice' })).toBeVisible();
+});
+
 test('background time does not count toward the hint', async ({ page }) => {
   await page.clock.install();
   await page.goto('/');

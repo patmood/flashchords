@@ -1,9 +1,68 @@
 import { describe, expect, it } from 'vitest';
 import { createEmptyCard } from 'ts-fsrs';
 import { CHORDS } from './chords';
-import { dayKey, emptyProgress, ensureSession, gradeAttempt, loadProgress, Rating, recordAttempt } from './scheduler';
+import { dayKey, emptyProgress, ensureSession, gradeAttempt, loadProgress, nextExtraChord, Rating, recordAttempt } from './scheduler';
 
 const now = new Date(2026, 9, 16, 12);
+
+function dailyDone() {
+  let progress = ensureSession(emptyProgress(), now);
+  for (const [i, chordId] of ['c', 'am', 'f'].entries()) {
+    progress = recordAttempt(progress, { chordId, seconds: 3, hinted: false, manual: true }, new Date(now.getTime() + i * 1000));
+  }
+  return progress;
+}
+
+describe('optional endless practice', () => {
+  it('reviews introduced chords first, without immediately repeating the previous chord', () => {
+    const progress = dailyDone();
+    expect(nextExtraChord(progress, 'f', new Date(now.getTime() + 4000))).toBe('c');
+    expect(nextExtraChord(emptyProgress())).toBe('c');
+  });
+
+  it('introduces a new chord after three extra reviews and keeps daily completion unchanged', () => {
+    let progress = dailyDone();
+    const daily = progress.daily;
+    let previous = 'f';
+    for (let i = 0; i < 3; i++) {
+      const at = new Date(now.getTime() + 4000 + i * 2000);
+      const chordId = nextExtraChord(progress, previous, at)!;
+      expect(['c', 'am', 'f']).toContain(chordId);
+      progress = recordAttempt(progress, { chordId, seconds: 3, hinted: false, manual: true, extra: true }, at);
+      previous = chordId;
+    }
+    expect(nextExtraChord(progress, previous, new Date(now.getTime() + 11000))).toBe('g');
+    progress = recordAttempt(progress, { chordId: 'g', seconds: 3, hinted: false, manual: true, extra: true }, new Date(now.getTime() + 12000));
+    expect(progress.cards.g.reps).toBe(1);
+    expect(progress.daily).toEqual(daily);
+    expect(loadProgress(JSON.stringify(progress)).daily).toEqual(daily);
+    expect(nextExtraChord(progress, 'g', new Date(now.getTime() + 13000))).not.toBe('c7');
+  });
+
+  it('preserves the new-chord interval across reloads and prioritizes due reviews', () => {
+    let progress = dailyDone();
+    for (let i = 0; i < 3; i++) {
+      progress = recordAttempt(progress, { chordId: 'c', seconds: 3, hinted: false, manual: true, extra: true }, new Date(now.getTime() + 4000 + i * 2000));
+    }
+    progress = loadProgress(JSON.stringify(progress));
+    const later = new Date(now.getTime() + 11000);
+    expect(nextExtraChord(progress, 'c', later)).toBe('g');
+    progress.cards.am.due = new Date(now.getTime() - 1000);
+    expect(nextExtraChord(progress, 'c', later)).toBe('am');
+  });
+
+  it('continues reviewing when all 20 chords are introduced', () => {
+    const progress = emptyProgress();
+    CHORDS.forEach(chord => { progress.cards[chord.id] = createEmptyCard(new Date(now.getTime() + 86400000)); });
+    for (let i = 0; i < 30; i++) {
+      const chordId = nextExtraChord(progress, '', now)!;
+      expect(chordId).toBeTruthy();
+      progress.cards[chordId].last_review = new Date(now.getTime() + i * 1000);
+    }
+    expect(Object.keys(progress.cards)).toHaveLength(20);
+  });
+});
+
 describe('daily scheduling and persistence', () => {
   it('starts with three approachable chords', () => {
     expect(ensureSession(emptyProgress(), now).daily?.ids).toEqual(['c', 'am', 'f']);

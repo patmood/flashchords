@@ -10,6 +10,7 @@ export interface Attempt {
   hinted: boolean;
   manual: boolean;
   seconds: number;
+  extra?: boolean;
 }
 export interface Progress {
   version: 1;
@@ -63,6 +64,34 @@ export function gradeAttempt(seconds: number, hinted: boolean): Rating {
   return Rating.Good;
 }
 
+export function nextExtraChord(progress: Progress, previousId = '', now = new Date()): string | null {
+  const introduced = CHORDS.filter(chord => progress.cards[chord.id]);
+  const candidates = introduced.length > 1 ? introduced.filter(chord => chord.id !== previousId) : introduced;
+  candidates.sort((a, b) => {
+    const first = progress.cards[a.id];
+    const second = progress.cards[b.id];
+    const firstDue = first.due <= now;
+    const secondDue = second.due <= now;
+    if (firstDue !== secondDue) return firstDue ? -1 : 1;
+    if (firstDue) return first.due.getTime() - second.due.getTime();
+    return (first.last_review?.getTime() ?? 0) - (second.last_review?.getTime() ?? 0);
+  });
+  // Keep new material gradual, even across reloads or separate extra sessions.
+  const seen = new Set<string>();
+  let extraReviewsSinceNew = 0;
+  for (const attempt of progress.history) {
+    if (!seen.has(attempt.chordId)) {
+      seen.add(attempt.chordId);
+      extraReviewsSinceNew = 0;
+    } else if (attempt.extra) extraReviewsSinceNew++;
+  }
+  const fresh = CHORDS.find(chord => !progress.cards[chord.id]);
+  if (fresh && (!introduced.length || (extraReviewsSinceNew >= 3 && !introduced.some(chord => progress.cards[chord.id].due <= now)))) {
+    return fresh.id;
+  }
+  return candidates[0]?.id ?? null;
+}
+
 export function recordAttempt(progress: Progress, attempt: Omit<Attempt, 'at' | 'rating'>, now = new Date()): Progress {
   const rating = gradeAttempt(attempt.seconds, attempt.hinted);
   const card = progress.cards[attempt.chordId] || createEmptyCard(now);
@@ -71,6 +100,8 @@ export function recordAttempt(progress: Progress, attempt: Omit<Attempt, 'at' | 
     ...progress,
     cards: { ...progress.cards, [attempt.chordId]: next },
     history: [...progress.history, { ...attempt, at: now.toISOString(), rating }],
-    daily: progress.daily ? { ...progress.daily, completed: [...new Set([...progress.daily.completed, attempt.chordId])] } : null,
+    daily: progress.daily && !attempt.extra && progress.daily.ids.includes(attempt.chordId)
+      ? { ...progress.daily, completed: [...new Set([...progress.daily.completed, attempt.chordId])] }
+      : progress.daily,
   };
 }

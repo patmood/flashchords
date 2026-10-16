@@ -1,7 +1,7 @@
 import './style.css';
 import { CHORDS, diagram } from './chords';
 import { ChordMicrophone } from './audio';
-import { dayKey, emptyProgress, ensureSession, loadProgress, recordAttempt, STORAGE_KEY } from './scheduler';
+import { dayKey, emptyProgress, ensureSession, loadProgress, nextExtraChord, recordAttempt, STORAGE_KEY } from './scheduler';
 import type { Progress } from './scheduler';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
@@ -17,6 +17,7 @@ catch {
 }
 let view: 'practice' | 'complete' | 'progress' | 'settings' = 'practice';
 let manual = false;
+let modeSelected = false;
 let starting = false;
 let error = '';
 let currentId = '';
@@ -29,6 +30,8 @@ let successful = false;
 let successManual = false;
 let transitionTimer: ReturnType<typeof setTimeout> | undefined;
 let requestId = 0;
+let practiceMode: 'daily' | 'extra' = 'daily';
+let extraCount = 0;
 
 const icons: Record<string, string> = {
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/>',
@@ -109,7 +112,9 @@ function practice() {
   const chord = CHORDS.find(c => c.id === currentId)!;
   const daily = progress.daily!;
   const percent = daily.completed.length / daily.ids.length * 100;
-  return `<section class="mx-auto max-w-lg py-6 sm:py-9"><div class="mb-3 flex items-center justify-between text-xs text-ink/60"><span>Today’s little session</span><span>${daily.completed.length} of ${daily.ids.length} complete</span></div><div class="mb-6 h-1.5 overflow-hidden rounded-full bg-ink/10"><div class="h-full rounded-full bg-[#7d9b75] transition-all" style="width:${percent}%"></div></div>
+  return `<section class="mx-auto max-w-lg py-6 sm:py-9">${practiceMode === 'extra'
+    ? `<div class="mb-6 flex items-center justify-between text-xs text-ink/60"><span>Extra practice · no finish line</span><span>${extraCount} played</span></div>`
+    : `<div class="mb-3 flex items-center justify-between text-xs text-ink/60"><span>Today’s little session</span><span>${daily.completed.length} of ${daily.ids.length} complete</span></div><div class="mb-6 h-1.5 overflow-hidden rounded-full bg-ink/10"><div class="h-full rounded-full bg-[#7d9b75] transition-all" style="width:${percent}%"></div></div>`}
     <div class="panel card-enter relative overflow-hidden text-center ${successful ? 'success-card !border-[#a2bf97] !bg-[#edf3e6]' : ''}">
       <p class="eyebrow">${successful ? 'That’s the one!' : progress.cards[currentId] ? 'A familiar friend' : 'Meet your next chord'}</p>
       <h1 class="my-3 font-serif text-[88px] leading-none tracking-tight sm:text-[104px]">${chord.name}</h1><p class="text-sm text-ink/60">${chord.label}</p>
@@ -119,12 +124,13 @@ function practice() {
     </div>
     <div class="mt-5" id="practice-controls">${successful ? '<p role="status" class="py-4 text-center text-sm text-forest">Progress saved for this session. On to the next…</p>' : !hasStarted ? `<button data-action="enable-mic" class="primary" ${starting ? 'disabled' : ''}>${icon('mic')} ${starting ? 'Waiting for microphone permission…' : 'Enable microphone & begin'}</button><button data-action="manual" class="mt-2 min-h-12 w-full text-sm font-bold underline decoration-ink/25 underline-offset-4">Practice without a microphone</button>` : paused ? `<button data-action="resume" class="primary" ${starting ? 'disabled' : ''}>${starting ? 'Reconnecting…' : 'Resume practice'}</button>` : `<div class="grid grid-cols-2 gap-3"><button data-action="hint" class="secondary" ${hinted ? 'disabled' : ''}>${icon('book')} ${hinted ? 'Fingering shown' : 'Show fingering'}</button><button data-action="got-it" class="secondary !border-forest/30 !text-forest">${icon('check')} I got it</button></div><p class="mt-3 text-center text-[11px] leading-5 text-ink/55">${manual ? 'Play the chord, then tap “I got it” when you’re happy with it.' : 'Not picking it up? “I got it” records a self-assessed attempt.'}</p>`}</div>
     ${error ? `<div role="alert" class="mt-4 rounded-xl bg-[#f7e7cd] p-4 text-sm">${escapeHtml(error)}${hasStarted ? '<button data-action="switch-manual" class="mt-3 block font-bold underline">Use manual mode</button>' : ''}</div>` : ''}
+    ${practiceMode === 'extra' ? '<button data-action="finish-extra" class="mt-4 min-h-12 w-full text-sm text-ink/65 underline underline-offset-4">Finish extra practice</button><p class="text-center text-[11px] leading-5 text-ink/55">Due reviews first. A new chord after every 3 extra reviews when nothing is due. Stop whenever you like.</p>' : ''}
   </section>`;
 }
 
 function completion() {
   const today = progress.history.filter(a => dayKey(new Date(a.at)) === dayKey());
-  return `<section class="mx-auto max-w-md py-12 text-center card-enter"><div class="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-sage text-forest">${icon('check', 'h-9 w-9')}</div><p class="eyebrow">A little better than before</p><h1 class="mt-4 font-serif text-5xl leading-tight">Look at you grow.</h1><p class="mt-5 text-sm leading-7 text-ink/65">Today’s practice is done. Your next session will bring back the chords that need a little love.</p><div class="panel my-7 grid grid-cols-2 divide-x divide-ink/10"><div><p class="font-serif text-4xl">${today.length}</p><p class="mt-2 text-xs text-ink/60">chords practiced</p></div><div><p class="font-serif text-4xl">${today.filter(a => !a.hinted).length}</p><p class="mt-2 text-xs text-ink/60">without a hint</p></div></div><button data-action="progress" class="primary">See your progress ${icon('arrow')}</button></section>`;
+  return `<section class="mx-auto max-w-md py-12 text-center card-enter"><div class="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-sage text-forest">${icon('check', 'h-9 w-9')}</div><p class="eyebrow">A little better than before</p><h1 class="mt-4 font-serif text-5xl leading-tight">Look at you grow.</h1><p class="mt-5 text-sm leading-7 text-ink/65">Your daily session is complete. That’s enough for today—or keep strumming for as long as you like.</p><div class="panel my-7 grid grid-cols-2 divide-x divide-ink/10"><div><p class="font-serif text-4xl">${today.length}</p><p class="mt-2 text-xs text-ink/60">strums practiced today</p></div><div><p class="font-serif text-4xl">${today.filter(a => !a.hinted).length}</p><p class="mt-2 text-xs text-ink/60">without a hint</p></div></div>${Object.keys(progress.cards).length ? `<button data-action="start-extra" class="primary">Keep practising ${icon('arrow')}</button><p class="mb-3 mt-2 text-xs leading-6 text-ink/55">More reviews, with new chords introduced gradually. Stop whenever you like.</p>` : ''}<button data-action="progress" class="secondary w-full">See your progress ${icon('chart')}</button></section>`;
 }
 
 function progressPage() {
@@ -171,6 +177,7 @@ function navigate(next: typeof view) {
 
 function openPractice() {
   stopActivity();
+  practiceMode = 'daily';
   error = '';
   progress = ensureSession(progress);
   save();
@@ -179,8 +186,9 @@ function openPractice() {
 
 function nextCard(start = true) {
   const remaining = progress.daily!.ids.filter(id => !progress.daily!.completed.includes(id));
-  if (!remaining.length) { navigate('complete'); return; }
-  currentId = remaining[0];
+  const nextId = practiceMode === 'extra' ? nextExtraChord(progress, currentId) : remaining[0];
+  if (!nextId) { navigate('complete'); return; }
+  currentId = nextId;
   elapsed = 0;
   activeSince = start ? performance.now() : null;
   hinted = false;
@@ -202,7 +210,8 @@ function succeed(selfAssessed: boolean) {
   if (view !== 'practice' || successful || paused) return;
   // The time threshold still counts as a hint if a tap beats the UI timer tick.
   if (currentSeconds() >= 20) hinted = true;
-  progress = recordAttempt(progress, { chordId: currentId, hinted, manual: selfAssessed, seconds: currentSeconds() });
+  progress = recordAttempt(progress, { chordId: currentId, hinted, manual: selfAssessed, seconds: currentSeconds(), extra: practiceMode === 'extra' });
+  if (practiceMode === 'extra') extraCount++;
   save();
   activeSince = null;
   successManual = selfAssessed;
@@ -234,6 +243,7 @@ async function begin(useManual: boolean, resume = false) {
   if (starting && !useManual) return;
   if (starting) stopActivity();
   manual = useManual;
+  modeSelected = true;
   error = '';
   const token = ++requestId;
   if (!useManual) {
@@ -250,8 +260,9 @@ async function begin(useManual: boolean, resume = false) {
     if (token !== requestId) return;
     starting = false;
   }
-  if (resume) {
+  if (resume || practiceMode === 'extra') {
     paused = false;
+    hasStarted = true;
     activeSince = performance.now();
     render();
   } else {
@@ -276,6 +287,14 @@ app.addEventListener('click', event => {
     case 'switch-manual': microphone.stop(); void begin(true, true); break;
     case 'hint': revealHint(); break;
     case 'got-it': succeed(true); break;
+    case 'start-extra':
+      stopActivity();
+      practiceMode = 'extra';
+      extraCount = 0;
+      nextCard(false);
+      if (view === 'practice' && modeSelected) void begin(manual, true);
+      break;
+    case 'finish-extra': navigate('complete'); break;
     case 'export': {
       let data = JSON.stringify(progress, null, 2);
       if (preserveStoredData) { try { data = localStorage.getItem(STORAGE_KEY) || data; } catch { /* export current in-memory data */ } }
@@ -312,7 +331,8 @@ document.addEventListener('visibilitychange', () => {
   if (successful) {
     clearTimeout(transitionTimer);
     microphone.stop();
-    openPractice();
+    if (practiceMode === 'extra') nextCard(false);
+    else openPractice();
     return;
   }
   if (paused) return;
