@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+@theme {
+  --color-cream: #f8f4ed;
+  --color-ink: #293e34;
+  --color-forest: #38634d;
+  --color-sage: #e5eddb;
+  --font-sans: 'Trebuchet MS', 'Segoe UI', sans-serif;
+  --font-serif: Georgia, 'Times New Roman', serif;
+}
+
+@layer base {
+  body { @apply m-0 bg-cream text-ink font-sans antialiased; }
+  button, a, input { -webkit-tap-highlight-color: transparent; }
+  button { @apply cursor-pointer; }
+  button:disabled { @apply cursor-wait opacity-60; }
+  button, a { touch-action: manipulation; }
+  :focus-visible { outline: 3px solid #b57637; outline-offset: 5px; }
+  ::selection { background: #e8c989; }
+}
+
+@layer components {
+  .primary { @apply flex min-h-14 w-full items-center justify-center gap-3 rounded-2xl bg-forest px-6 py-4 font-bold text-white transition hover:bg-[#294d39] active:scale-[.98]; }
+  .secondary { @apply flex min-h-12 items-center justify-center gap-2 rounded-xl border border-ink/15 bg-white/40 px-5 py-3 text-sm font-bold transition hover:bg-white; }
+  .eyebrow { @apply text-[11px] font-bold uppercase tracking-[.18em] text-forest; }
+  .panel { @apply rounded-[28px] border border-[#e5dfd4] bg-[#fffcf7] p-6; }
+  .nav-button { @apply flex min-h-14 items-center gap-2 border-b-2 border-transparent px-2 text-sm text-ink/65; }
+  .nav-button.active { @apply border-forest font-bold text-forest; }
+  .chord-diagram { @apply mx-auto w-44 text-forest; }
+  .icon-button { @apply flex h-11 w-11 items-center justify-center rounded-full hover:bg-ink/5; }
+}
+
+.hero-art { background: radial-gradient(ellipse at center, #e6ebd8 0%, #e6ebd8 58%, transparent 59%); }
+.card-enter { animation: card-in .35s ease-out both; }
+.success-card { animation: success-pop .5s ease-out; }
+.confetti { position: absolute; inset: 0; pointer-events: none; overflow: hidden; border-radius: 28px; }
+.confetti i { position: absolute; width: 9px; height: 15px; top: 40%; left: 50%; background: #d7a44c; animation: confetti .95s ease-out forwards; transform: rotate(var(--r)); }
+.confetti i:nth-child(3n) { background: #739377; }
+.confetti i:nth-child(3n + 1) { background: #d68d72; border-radius: 50%; }
+.meter-bar { width: 4px; border-radius: 9px; background: #719374; transition: height .1s; }
+@keyframes card-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes success-pop { 50% { transform: scale(1.025); } }
+@keyframes confetti { to { opacity: 0; transform: translate(var(--x), var(--y)) rotate(var(--r)); } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+  .confetti { display: none; }
+}
