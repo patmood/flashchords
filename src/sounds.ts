@@ -50,12 +50,27 @@ export class ChordSound {
   private isRunning(): boolean { return this.context?.state === 'running'; }
 
   async play(chord: Chord): Promise<boolean> {
+    return this.playSamples(rate => chordSamples(chord, rate));
+  }
+
+  async playNote(frequency: number): Promise<boolean> {
+    return this.playSamples(rate => {
+      const samples = new Float32Array(Math.ceil(1.2 * rate));
+      for (let i = 0; i < rate; i++) {
+        const t = i / rate;
+        samples[i] = Math.sin(2 * Math.PI * frequency * t) * .25 * Math.min(1, t / .01) * Math.min(1, (1 - t) / .1);
+      }
+      return samples;
+    });
+  }
+
+  private async playSamples(makeSamples: (rate: number) => Float32Array): Promise<boolean> {
     this.stop();
     const generation = this.generation;
     if (!await this.unlock() || generation !== this.generation || !this.context) return false;
     try {
       const context = this.context;
-      const samples = chordSamples(chord, context.sampleRate);
+      const samples = makeSamples(context.sampleRate);
       const buffer = context.createBuffer(1, samples.length, context.sampleRate);
       buffer.getChannelData(0).set(samples);
       const source = context.createBufferSource();

@@ -91,22 +91,13 @@
 .confetti i:nth-child(3n + 1) { background: #fb8e91; border-radius: 50%; }
 .confetti i:nth-child(3n + 2) { background: #a594ef; }
 .meter-bar { width: 5px; border-radius: 9px; background: #29bdb2; transition: height .1s; }
-.shortcut-badge { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; font-size: 10px; font-weight: 900; line-height: 1; padding: 5px 6px; border-radius: 7px; background: #0875b914; color: #0875b9; white-space: nowrap; }
-.primary .shortcut-badge { background: #065f94; color: white; }
-button:has(> .shortcut-badge) { flex-wrap: wrap; }
 .brand { position: relative; }
-.brand .shortcut-badge { position: absolute; bottom: -7px; left: 13px; font-size: 8px; padding: 2px 4px; }
 .nav-button, .icon-button { position: relative; }
-.nav-button > .shortcut-badge, .icon-button > .shortcut-badge { position: absolute; bottom: -9px; left: 50%; transform: translateX(-50%); background: #edf8ff; padding: 3px 4px; font-size: 8px; }
 .handsfree-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 17px; font-size: 10px; color: #5b7388; }
 .handsfree-indicator.is-listening { color: #26754b; font-weight: 800; }
 .handsfree-toggle { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; color: #0875b9; font-size: 10px; font-weight: 800; }
 .introduction-dialog .intro-fingering .chord-diagram { width: 134px; }
 .intro-choice { flex-direction: column; gap: 5px; padding: 12px 8px; font-size: 13px; }
-.command-diagram .chord-diagram { width: 62px; height: 75px; }
-.intro-choice.primary .command-diagram .chord-diagram { color: white; }
-.intro-choice.primary .command-diagram circle[fill="currentColor"] + text { fill: #0875b9; }
-.intro-choice .shortcut-badge { font-size: 12px; }
 .dialog-listening { color: #4b708b; line-height: 1.5; }
 @media (max-width: 360px) { .app-header nav { gap: 2px; } .nav-button { padding-inline: 6px; } .icon-button { width: 36px; } .brand { font-size: 17px; gap: 3px; } }
 @media (max-height: 760px) {
@@ -118,7 +109,6 @@ button:has(> .shortcut-badge) { flex-wrap: wrap; }
   .introduction-dialog .intro-fingering .chord-diagram { width: 110px; }
   .introduction-dialog [data-action="play-chord"] { min-height: 44px; margin-bottom: 10px; }
   .intro-choice { padding: 10px 6px; gap: 4px; }
-  .command-diagram .chord-diagram { width: 52px; height: 64px; }
 }
 @media (min-width: 640px) { .study-card { padding: 26px 28px; } }
 @keyframes card-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -128,3 +118,7 @@ button:has(> .shortcut-badge) { flex-wrap: wrap; }
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
   .confetti { display: none; }
 }
+
+.tuning-track { position: relative; height: 16px; margin: 0 8px; border-radius: 8px; background: linear-gradient(to right, #e0f2ff 45%, #c7ecd5 45%, #c7ecd5 55%, #e0f2ff 55%); }
+#tuning-needle { position: absolute; left: 50%; top: -4px; height: 24px; width: 4px; border-radius: 2px; background: #0875b9; transform: translateX(-50%); transition: left .1s; }
+@media (max-width: 360px) { .app-header .brand { font-size: 15px; } .app-header nav { gap: 0; } .app-header .nav-button { padding-inline: 4px; } }

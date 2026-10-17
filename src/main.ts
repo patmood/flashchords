@@ -1,11 +1,11 @@
 import './style.css';
+import { TUNING, centsFrom, frequencyForMidi } from './tuner';
 import { CHORDS, diagram } from './chords';
 import { ChordMicrophone } from './audio';
 import { acceptIntroduction, dayKey, deferIntroduction, emptyProgress, ensureSession, loadProgress, needsIntroduction, nextExtraChord, nextFamiliarChord, recordAttempt, STORAGE_KEY } from './scheduler';
 import type { Progress } from './scheduler';
 import { readStoredValue, WELCOME_KEY } from './storage';
 import { ChordSound, SOUND_KEY } from './sounds';
-import { assignShortcuts, findShortcut } from './shortcuts';
 
 const HINT_SECONDS = 15;
 
@@ -26,7 +26,8 @@ catch {
   preserveStoredData = true;
   storageWarning = 'Saved progress could not be read. It has not been overwritten. You can practice without saving, or reset it in settings.';
 }
-let view: 'practice' | 'complete' | 'progress' | 'settings' | 'break' = 'practice';
+let view: 'practice' | 'complete' | 'progress' | 'settings' | 'break' | 'tuning' = 'practice';
+let tuningString = 0;
 let introId = '';
 let introResume = false;
 let currentIsSpacer = false;
@@ -53,6 +54,7 @@ let practiceMode: 'daily' | 'extra' = 'daily';
 let extraCount = 0;
 
 const icons: Record<string, string> = {
+  tune: '<path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3"/><circle cx="15" cy="17" r="3"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/>',
   chart: '<path d="M4 19h16M7 15v-4m5 4V5m5 10V8"/>',
   gear: '<path d="m9 3-.6 2-2 .9-2-.5-2 3.4 1.4 1.6v2.3l-1.4 1.6 2 3.4 2-.5 2 .9.6 2h4l.6-2 2-.9 2 .5 2-3.4-1.4-1.6v-2.3l1.4-1.6-2-3.4-2 .5-2-.9L13 3Z"/><circle cx="11" cy="11.5" r="3"/>',
@@ -102,10 +104,11 @@ function shell(content: string): string {
       <nav aria-label="Main navigation" class="flex gap-2 sm:gap-5">
         <button data-action="practice" class="nav-button ${view === 'practice' || view === 'complete' ? 'active' : ''}" ${view === 'practice' ? 'aria-current="page"' : ''}>${icon('sun')}<span class="hidden sm:inline">Practice</span><span class="sr-only sm:hidden">Practice</span></button>
         <button data-action="progress" class="nav-button ${view === 'progress' ? 'active' : ''}" ${view === 'progress' ? 'aria-current="page"' : ''}>${icon('chart')}<span class="hidden sm:inline">Progress</span><span class="sr-only sm:hidden">Progress</span></button>
+        <button data-action="tuning" class="nav-button ${view === 'tuning' ? 'active' : ''}" ${view === 'tuning' ? 'aria-current="page"' : ''} aria-label="Tuner">${icon('tune')}<span class="hidden sm:inline">Tune</span></button>
         <button data-action="settings" class="icon-button self-center" aria-label="Settings">${icon('gear')}</button>
       </nav>
     </header>
-    <div class="handsfree-toolbar"><span class="handsfree-indicator ${micEnabled ? 'is-listening' : ''}">${micEnabled ? '● Listening for button chords' : 'Hands-free chord controls'}</span><button data-action="hands-free" class="handsfree-toggle" ${micStarting ? 'disabled' : ''}>${micStarting ? 'Connecting…' : micEnabled ? 'Turn mic off' : 'Enable microphone'}</button></div>
+    <div class="handsfree-toolbar"><span class="handsfree-indicator ${micEnabled ? 'is-listening' : ''}">${micEnabled ? '● Microphone enabled' : 'Chord recognition'}</span><button data-action="hands-free" class="handsfree-toggle" ${micStarting ? 'disabled' : ''}>${micStarting ? 'Connecting…' : micEnabled ? 'Turn mic off' : 'Enable microphone'}</button></div>
     ${micError ? `<p role="alert" class="mb-3 rounded-xl bg-[#fff1d5] p-3 text-xs">${escapeHtml(micError)}</p>` : ''}
     ${storageWarning ? `<div role="alert" class="mt-5 rounded-xl bg-[#f7e7cd] p-4 text-sm">${escapeHtml(storageWarning)}</div>` : ''}
     <main id="main-content">${content}</main>
@@ -123,8 +126,9 @@ function showWelcome() {
   dialog.setAttribute('aria-describedby', 'welcome-description');
   dialog.innerHTML = `${mascot('welcome-mascot')}
     <h2 id="welcome-title" class="font-serif text-3xl">Welcome to Flashchords.</h2>
-    <div id="welcome-description" class="mt-4 space-y-3 text-sm leading-6 text-ink/70"><p>Meet each new chord, then try it from memory. A fingering hint appears after <strong>15 seconds</strong>.</p><p>Use a tuned <strong>high-G ukulele (G–C–E–A)</strong>. Buttons show a playable chord shortcut. Enable the microphone once to use hands-free controls throughout the app. Audio stays on your device.</p><p>Not ready for a new chord? Play three familiar cards, then try again.</p></div>
+    <div id="welcome-description" class="mt-4 space-y-3 text-sm leading-6 text-ink/70"><p>Meet each new chord, then try it from memory. A fingering hint appears after <strong>15 seconds</strong>.</p><p>Use a tuned <strong>high-G ukulele (G–C–E–A)</strong>. Enable the microphone to recognize your playing. Play the chord shown in a new-chord introduction to continue. Audio stays on your device.</p><p>Not ready for a new chord? Play three familiar cards, then try again.</p></div>
     <label class="my-5 flex min-h-11 cursor-pointer items-center gap-3 text-sm"><input id="hide-welcome" type="checkbox" class="h-5 w-5 accent-forest" />Don’t show again</label>
+    <button data-action="tuning" class="secondary mb-3 w-full">Tune your ukulele</button>
     <button id="dismiss-welcome" data-action="welcome-dismiss" class="primary" autofocus>Let’s play</button>
     <button data-action="hands-free" class="secondary mt-3 w-full">Enable hands-free</button><p class="dialog-listening mt-3 text-center text-xs" role="status"></p>`;
   const dismiss = () => {
@@ -138,7 +142,7 @@ function showWelcome() {
     dialog.close();
     dialog.remove();
     if (!maybeShowIntroduction()) void playPreview();
-    refreshShortcuts();
+    refreshMicrophoneStatus();
     document.querySelector<HTMLElement>('[data-action="enable-mic"], main button')?.focus();
   };
   dialog.querySelector('#dismiss-welcome')!.addEventListener('click', dismiss);
@@ -148,14 +152,12 @@ function showWelcome() {
   });
   document.body.append(dialog);
   dialog.showModal();
-  refreshShortcuts();
+  refreshMicrophoneStatus();
 }
 
-function refreshShortcuts() {
-  const dialog = document.querySelector<HTMLDialogElement>('dialog[open]');
-  assignShortcuts(!dialog && view === 'practice' && hasStarted ? currentId : '');
+function refreshMicrophoneStatus() {
   document.querySelectorAll<HTMLElement>('.dialog-listening').forEach(el => {
-    el.textContent = previewing ? 'Playing the reference. Chord controls resume afterward.' : micStarting ? 'Connecting microphone…' : micError || (micEnabled ? 'Listening for the chords shown on the buttons.' : 'Tap Enable hands-free once, or use the buttons normally.');
+    el.textContent = previewing ? 'Playing the reference. Listening resumes afterward.' : micStarting ? 'Connecting microphone…' : micError || (micEnabled ? introId ? `Play ${CHORDS.find(c => c.id === introId)!.label} to continue.` : 'Microphone ready for chord recognition.' : 'Tap Enable hands-free once, or use the buttons normally.');
   });
   document.querySelectorAll<HTMLButtonElement>('dialog [data-action="hands-free"]').forEach(button => {
     button.disabled = micStarting;
@@ -182,8 +184,6 @@ function maybeShowIntroduction(): boolean {
   activeSince = null;
   paused = true;
   const chord = CHORDS.find(c => c.id === introId)!;
-  const yes = CHORDS.find(c => c.id === 'c')!;
-  const later = CHORDS.find(c => c.id === 'am')!;
   const dialog = document.createElement('dialog');
   dialog.id = 'introduction-dialog';
   dialog.className = 'welcome-dialog introduction-dialog panel';
@@ -191,13 +191,13 @@ function maybeShowIntroduction(): boolean {
   dialog.innerHTML = `<p class="eyebrow text-center">A new chord to meet</p><h2 id="intro-title" class="mt-2">Meet ${chord.label}.</h2>
     <div class="intro-fingering my-3">${diagram(chord)}</div><p class="mb-3 text-center text-xs leading-5 text-ink/70">${chord.tip}</p>
     <button data-action="play-chord" class="secondary mx-auto mb-4" aria-label="Play ${chord.label}">${icon('speaker')}Hear chord</button>
-    <div class="grid grid-cols-2 gap-3"><button data-action="intro-accept" data-fixed-chord="c" class="primary intro-choice"><span>I’m ready</span><span class="command-diagram" aria-hidden="true">${diagram(yes)}</span></button><button data-action="intro-defer" data-fixed-chord="am" class="secondary intro-choice"><span>I’m not ready</span><span class="command-diagram" aria-hidden="true">${diagram(later)}</span></button></div>
-    <p class="mt-3 text-center text-xs text-ink/70">Play C to accept, or Am for three familiar-card reviews before we ask again.</p><button data-action="hands-free" class="secondary mt-3 w-full">Enable hands-free</button><p class="dialog-listening mt-3 text-center text-xs" role="status"></p>`;
+    <div class="grid grid-cols-2 gap-3"><button data-action="intro-accept" class="primary intro-choice"><span>I’m ready</span></button><button data-action="intro-defer" class="secondary intro-choice"><span>I’m not ready</span></button></div>
+    <p class="mt-3 text-center text-xs text-ink/70">Play ${chord.label} to continue, or choose “I’m not ready” for three familiar-card reviews before we ask again.</p><button data-action="hands-free" class="secondary mt-3 w-full">Enable hands-free</button><p class="dialog-listening mt-3 text-center text-xs" role="status"></p>`;
   dialog.addEventListener('cancel', event => { event.preventDefault(); deferCurrentIntroduction(); });
   document.body.append(dialog);
   dialog.showModal();
   microphone.arm();
-  refreshShortcuts();
+  refreshMicrophoneStatus();
   void playPreview();
   return true;
 }
@@ -297,13 +297,33 @@ function progressPage() {
   </section>`;
 }
 
+function tuningPage() {
+  const target = TUNING[tuningString];
+  return `<section class="mx-auto max-w-lg py-6 sm:py-9"><p class="eyebrow">Find your sound</p><h1 class="mt-3 text-4xl">Tune your ukulele.</h1><p class="mt-4 text-sm leading-7 text-ink/70">Standard high-G tuning: G4 · C4 · E4 · A4. Choose a string, then pluck it on its own without holding any frets.</p>
+    <div class="my-6 grid grid-cols-4 gap-2" aria-label="Choose a string">${TUNING.map((string, i) => `<button data-action="tuning-string" data-string="${i}" aria-pressed="${i === tuningString}" class="secondary flex-col ${i === tuningString ? '!border-forest !bg-sage' : ''}"><span class="text-xl">${string.note}</span><span class="text-[10px]">String ${string.string}</span></button>`).join('')}</div>
+    <div class="panel text-center"><p class="eyebrow">Target ${target.note} · ${frequencyForMidi(target.midi).toFixed(2)} Hz</p><p id="tuning-reading" class="my-6 text-2xl font-bold" role="status">${micEnabled ? 'Pluck the selected string.' : 'Enable the microphone to tune.'}</p><div class="tuning-track" aria-hidden="true"><span id="tuning-needle"></span></div><div class="mt-2 flex justify-between text-xs text-ink/65"><span>Flat · tighten</span><span>In tune</span><span>Sharp · loosen</span></div><button data-action="tuning-reference" class="secondary mt-6 w-full">${icon('speaker')}Hear ${target.note}</button><p class="mt-3 text-xs leading-6 text-ink/65">Let the reference finish, then pluck your string. Adjust the tuning peg a little at a time.</p></div>
+    <button data-action="hands-free" class="primary mt-5" ${micStarting ? 'disabled' : ''}>${micStarting ? 'Connecting…' : micEnabled ? 'Turn microphone off' : 'Enable microphone'}</button><button data-action="practice" class="secondary mt-3 w-full">Back to practice</button></section>`;
+}
+
+async function playTuningReference() {
+  stopPreview();
+  const token = ++previewRequest;
+  previewing = true;
+  const status = document.querySelector('#tuning-reading');
+  if (status) status.textContent = 'Playing reference…';
+  await chordSound.playNote(frequencyForMidi(TUNING[tuningString].midi));
+  if (token !== previewRequest) return;
+  previewing = false;
+  if (view === 'tuning') render();
+}
+
 function settings() {
   return `<section class="mx-auto max-w-xl py-9"><p class="eyebrow">Keep it simple</p><h1 class="mt-3 font-serif text-4xl">Your little setup.</h1><div class="panel mt-7 space-y-6"><div><h2 class="text-sm font-bold">Standard high-G ukulele</h2><p class="mt-2 text-sm leading-6 text-ink/65">G4 · C4 · E4 · A4. Soprano, concert, or tenor. Low-G and baritone tuning aren’t supported in this version.</p></div><div><h2 class="text-sm font-bold">Private by design</h2><p class="mt-2 text-sm leading-6 text-ink/65">Progress lives only in this browser’s local storage. Clearing site data clears it too. Audio is never recorded or sent anywhere. Use the same browser and device to keep learning.</p></div><div><h2 class="text-sm font-bold">A forgiving listening buddy</h2><p class="mt-2 text-sm leading-6 text-ink/65">Tune first, reduce background noise, and strum all four strings. Similar chords or noisy rooms can confuse recognition. You can always self-assess with “I got it”.</p></div></div><div class="panel mt-5"><h2 class="text-sm font-bold">Your progress</h2><p class="mb-4 mt-2 text-sm leading-6 text-ink/65">Keep a copy of your progress, or start fresh on this device.</p><button data-action="export" class="secondary w-full">Download progress backup</button><button data-action="reset" class="mt-3 min-h-12 w-full text-sm text-[#9a4937] underline underline-offset-4">Reset all progress</button></div></section>`;
 }
 
 function render(focus = false) {
-  app.innerHTML = shell(view === 'practice' ? practice() : view === 'complete' ? completion() : view === 'progress' ? progressPage() : view === 'break' ? breakPage() : settings());
-  refreshShortcuts();
+  app.innerHTML = shell(view === 'practice' ? practice() : view === 'complete' ? completion() : view === 'progress' ? progressPage() : view === 'break' ? breakPage() : view === 'tuning' ? tuningPage() : settings());
+  refreshMicrophoneStatus();
   if (focus) {
     const main = document.querySelector<HTMLElement>('main')!;
     main.tabIndex = -1;
@@ -324,12 +344,15 @@ function stopActivity() {
 
 function navigate(next: typeof view) {
   stopActivity();
+  if (view === 'practice') paused = true;
+  if (view === 'tuning') disconnectMicrophone();
   error = '';
   view = next;
   render(true);
 }
 
 function openPractice() {
+  if (view === 'tuning') disconnectMicrophone();
   stopActivity();
   practiceMode = 'daily';
   error = '';
@@ -381,20 +404,26 @@ function succeed(selfAssessed: boolean) {
   transitionTimer = setTimeout(() => nextCard(), 1400);
 }
 
-function onAudioFrame(d: { chordId: string | null; level: number; listening: boolean }) {
+function onAudioFrame(d: { chordId: string | null; level: number; listening: boolean; frequency?: number | null }) {
   if (document.hidden || previewing || starting || micStarting) return;
+  if (view === 'tuning') {
+    const reading = document.querySelector<HTMLElement>('#tuning-reading');
+    const needle = document.querySelector<HTMLElement>('#tuning-needle');
+    if (!reading || !needle) return;
+    const cents = d.frequency ? centsFrom(d.frequency, TUNING[tuningString].midi) : null;
+    reading.textContent = cents === null ? 'Pluck the selected string.' : `${Math.abs(cents) <= 5 ? 'In tune' : cents < 0 ? 'Too flat · tighten' : 'Too sharp · loosen'} · ${Math.round(cents) > 0 ? '+' : ''}${Math.round(cents)} cents`;
+    needle.style.left = `${50 + Math.max(-50, Math.min(50, cents ?? 0))}%`;
+    needle.style.background = cents !== null && Math.abs(cents) <= 5 ? '#26754b' : '#0875b9';
+    return;
+  }
   const modal = document.querySelector('dialog[open]');
   if (!modal && view === 'practice' && !paused && !successful && d.chordId === currentId) {
     succeed(false);
     return;
   }
-  if (d.chordId) {
-    const button = findShortcut(d.chordId);
-    if (button && !(button.dataset.action === 'practice' && view === 'practice')) {
-      microphone.arm();
-      button.click();
-      return;
-    }
+  if (modal?.id === 'introduction-dialog' && introId && d.chordId === introId) {
+    acceptCurrentIntroduction();
+    return;
   }
   if (modal || view !== 'practice' || paused || successful) return;
   const status = document.querySelector('#listening-status');
@@ -435,7 +464,7 @@ async function enableHandsFree(): Promise<boolean> {
   micError = '';
   render();
   try {
-    await microphone.start(onAudioFrame, audioError);
+    await microphone.start(onAudioFrame, audioError, view === 'tuning');
     if (token !== micRequest || document.hidden) return false;
     micEnabled = true;
     manual = false;
@@ -496,6 +525,18 @@ document.addEventListener('click', event => {
     case 'practice':
       if (view !== 'practice') openPractice();
       break;
+    case 'tuning': {
+      document.querySelector<HTMLDialogElement>('#welcome-dialog')?.remove();
+      disconnectMicrophone();
+      navigate('tuning');
+      break;
+    }
+    case 'tuning-string':
+      stopPreview();
+      tuningString = Number(button.dataset.string);
+      render();
+      break;
+    case 'tuning-reference': void playTuningReference(); break;
     case 'progress': navigate('progress'); break;
     case 'settings': navigate('settings'); break;
     case 'hands-free':
@@ -562,6 +603,7 @@ document.addEventListener('visibilitychange', () => {
     return;
   }
   disconnectMicrophone(true);
+  if (view === 'tuning') { stopPreview(); render(); }
   if (starting) {
     stopActivity();
     error = 'Setup paused when you left the app. Tap again to reconnect.';

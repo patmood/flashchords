@@ -1,6 +1,7 @@
+import { detectPitch } from './tuner';
 import { CHORDS, chordMidi } from './chords';
 
-export interface Detection { chordId: string | null; confidence: number; level: number; listening: boolean }
+export interface Detection { chordId: string | null; confidence: number; level: number; listening: boolean; frequency?: number | null }
 
 /** Pitch-class evidence from local spectral peaks. Upper harmonics are discounted. */
 export function spectrumChroma(db: Float32Array, sampleRate: number, fftSize: number): number[] {
@@ -56,7 +57,7 @@ export class ChordMicrophone {
     this.matchFrames = 0;
   }
 
-  async start(onFrame: (d: Detection) => void, onError: (message: string) => void): Promise<void> {
+  async start(onFrame: (d: Detection) => void, onError: (message: string) => void, tuning = false): Promise<void> {
     this.stop();
     const generation = this.generation;
     if (!navigator.mediaDevices?.getUserMedia) throw new Error('Microphone access needs HTTPS and a supported browser. You can still practice manually.');
@@ -86,6 +87,10 @@ export class ChordMicrophone {
         }
         analyser.getFloatTimeDomainData(waveform);
         const level = Math.sqrt(waveform.reduce((s, n) => s + n * n, 0) / waveform.length);
+        if (tuning) {
+          onFrame({ chordId: null, confidence: 0, level, listening: true, frequency: detectPitch(waveform, this.context.sampleRate) });
+          return;
+        }
         if (level < .008) {
           this.quietFrames++;
           if (this.quietFrames >= 2) this.released = true;

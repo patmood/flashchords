@@ -1,4 +1,4 @@
-import type { Locator, Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { CHORDS, chordMidi } from '../src/chords';
 
 export async function installInstrument(page: Page, feedback = false) {
@@ -49,11 +49,4 @@ export async function strum(page: Page, chordId: string) {
   await page.evaluate(() => (window as unknown as { instrumentQuiet: () => void }).instrumentQuiet());
   await page.waitForTimeout(600);
   await page.evaluate(notes => (window as unknown as { instrumentPlay: (notes: number[]) => void }).instrumentPlay(notes), notes);
-}
-
-export async function strumButton(page: Page, button: Locator) {
-  await button.scrollIntoViewIfNeeded();
-  const id = await button.getAttribute('data-shortcut-chord');
-  if (!id) throw new Error('Button has no chord shortcut');
-  await strum(page, id);
 }

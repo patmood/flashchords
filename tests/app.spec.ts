@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { CHORDS } from '../src/chords';
-import { installInstrument, strum, strumButton } from './instrument';
+import { installInstrument, strum } from './instrument';
 
 test.beforeEach(async ({ page }, info) => {
   if (!info.title.startsWith('introductions')) {
@@ -11,28 +11,28 @@ test.beforeEach(async ({ page }, info) => {
     }, CHORDS.map(c => c.id));
   }
   // Timing tests use a virtual clock; real Web Audio playback is tested separately.
-  if (!info.title.startsWith('chord previews') && !info.title.includes('play their sound')) {
+  if (!info.title.startsWith('chord previews') && !info.title.startsWith('introductions ignore reference playback')) {
     await page.addInitScript(() => localStorage.setItem('flashchords.chord-sounds.v1', 'false'));
   }
 });
 
-test('introductions defer new chords for three familiar reviews and buttons work hands-free across screens', async ({ page }) => {
+test('introductions continue with the displayed chord and defer for three familiar reviews', async ({ page }) => {
   test.setTimeout(60_000);
   await installInstrument(page);
   await page.goto('/');
   await page.getByRole('button', { name: 'Enable hands-free', exact: true }).click();
-  await expect(page.locator('#welcome-dialog .dialog-listening')).toHaveText('Listening for the chords shown on the buttons.');
-  await strumButton(page, page.getByRole('button', { name: 'Let’s play' }));
+  await expect(page.locator('#welcome-dialog .dialog-listening')).toHaveText('Microphone ready for chord recognition.');
+  await page.getByRole('button', { name: 'Let’s play' }).click();
   await expect(page.getByRole('dialog', { name: 'Meet C major.' })).toBeVisible();
   await expect(page.locator('.intro-fingering').getByRole('img', { name: /C major/ })).toBeVisible();
-  await strumButton(page, page.getByRole('button', { name: 'I’m ready', exact: true }));
+  await strum(page, 'c');
   await expect(page.locator('#introduction-dialog')).toHaveCount(0);
-  await strumButton(page, page.getByRole('button', { name: 'Enable microphone & begin' }));
+  await page.getByRole('button', { name: 'Enable microphone & begin' }).click();
   await expect(page.getByRole('button', { name: 'I got it' })).toBeVisible();
   await strum(page, 'c');
   await expect(page.getByText('Lovely strum!')).toBeVisible();
   await expect(page.getByRole('dialog', { name: 'Meet A minor.' })).toBeVisible();
-  await strumButton(page, page.getByRole('button', { name: 'I’m not ready', exact: true }));
+  await page.getByRole('button', { name: 'I’m not ready', exact: true }).click();
   for (let i = 0; i < 3; i++) {
     await expect(page.getByRole('heading', { name: 'C', exact: true })).toBeVisible();
     await expect(page.locator('#introduction-dialog')).toHaveCount(0);
@@ -43,12 +43,16 @@ test('introductions defer new chords for three familiar reviews and buttons work
     }
   }
   await expect(page.getByRole('dialog', { name: 'Meet A minor.' })).toBeVisible();
-  await strumButton(page, page.getByRole('button', { name: 'I’m ready', exact: true }));
+  await strum(page, 'c');
+  await page.waitForTimeout(700);
+  await expect(page.getByRole('dialog', { name: 'Meet A minor.' })).toBeVisible();
+  await strum(page, 'am');
   await expect(page.locator('#introduction-dialog')).toHaveCount(0);
-  await strumButton(page, page.getByRole('button', { name: 'Progress', exact: true }));
+  await page.getByRole('button', { name: 'Progress', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Your growing chord garden.' })).toBeVisible();
-  await expect(page.getByText('● Listening for button chords')).toBeVisible();
-  await strumButton(page, page.getByRole('button', { name: 'Settings', exact: true }));
+  await expect(page.locator('[data-shortcut-chord], .shortcut-badge')).toHaveCount(0);
+  await expect(page.getByText('● Microphone enabled')).toBeVisible();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Your little setup.' })).toBeVisible();
   const data = await page.evaluate(() => JSON.parse(localStorage.getItem('flashchords.progress.v1')!));
   expect(data.history).toHaveLength(4);
@@ -75,19 +79,19 @@ test('introductions can be deferred before any chords are learned, without false
   await expect(page.locator('#introduction-dialog')).toHaveCount(0);
 });
 
-test('introductions play their sound without accepting their own chord shortcut', async ({ page }) => {
+test('introductions ignore reference playback and accept a fresh matching strum', async ({ page }) => {
   await installInstrument(page, true);
   await page.goto('/');
   await page.getByRole('button', { name: 'Enable hands-free', exact: true }).click();
-  await expect(page.locator('#welcome-dialog .dialog-listening')).toHaveText('Listening for the chords shown on the buttons.');
+  await expect(page.locator('#welcome-dialog .dialog-listening')).toHaveText('Microphone ready for chord recognition.');
   await page.getByRole('button', { name: 'Let’s play' }).click();
   await expect(page.getByRole('dialog', { name: 'Meet C major.' })).toBeVisible();
   await expect(page.locator('#introduction-dialog .dialog-listening')).toContainText('Playing the reference');
-  await expect(page.locator('#introduction-dialog .dialog-listening')).toHaveText('Listening for the chords shown on the buttons.');
+  await expect(page.locator('#introduction-dialog .dialog-listening')).toHaveText('Play C major to continue.');
   await page.waitForTimeout(500);
   await expect(page.getByRole('dialog', { name: 'Meet C major.' })).toBeVisible();
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('flashchords.progress.v1')!).history)).toHaveLength(0);
-  await strumButton(page, page.getByRole('button', { name: 'I’m ready', exact: true }));
+  await strum(page, 'c');
   await expect(page.locator('#introduction-dialog')).toHaveCount(0);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('flashchords.progress.v1')!).history)).toHaveLength(0);
 });
@@ -440,7 +444,7 @@ test('microphone recognizes a synthetic strum and rejects a wrong chord', async 
   await page.evaluate(() => (window as unknown as { quiet: () => void }).quiet());
   await expect(page.getByRole('heading', { name: 'Am', exact: true })).toBeVisible();
   await expect(page.getByText('Listening for your strum…')).toBeVisible();
-  // E is neither the requested chord nor a visible control shortcut here.
+  // A wrong chord must not trigger any action.
   await page.evaluate(() => (window as unknown as { strum: (n: number[]) => void }).strum([493.883, 329.628, 415.305, 493.883]));
   await page.waitForTimeout(800);
   await expect(page.getByRole('heading', { name: 'Am', exact: true })).toBeVisible();
@@ -450,4 +454,41 @@ test('microphone recognizes a synthetic strum and rejects a wrong chord', async 
   const history = await page.evaluate(() => JSON.parse(localStorage.getItem('flashchords.progress.v1')!).history);
   expect(history).toHaveLength(2);
   expect(history.every((a: { manual: boolean }) => !a.manual)).toBe(true);
+});
+
+test('tuner opens from welcome and header, plays notes, and fits narrow phones', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Tune your ukulele', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Tune your ukulele.' })).toBeVisible();
+  await page.getByRole('button', { name: 'C4 String 3' }).click();
+  await expect(page.getByText('Target C4 · 261.63 Hz')).toBeVisible();
+  await page.getByRole('button', { name: 'Hear C4' }).click();
+  await expect(page.locator('#tuning-reading')).toHaveText('Playing reference…');
+  await expect(page.locator('#tuning-reading')).toHaveText('Enable the microphone to tune.');
+  await page.setViewportSize({ width: 320, height: 700 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.getByRole('button', { name: 'Back to practice' }).click();
+  await page.getByRole('button', { name: 'Tuner', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Tune your ukulele.' })).toBeVisible();
+});
+
+test('tuner measures a single string, handles silence, and releases the microphone on exit', async ({ page }) => {
+  await installInstrument(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Tune your ukulele', exact: true }).click();
+  await page.getByRole('button', { name: 'Enable microphone', exact: true }).last().click();
+  await expect(page.locator('#tuning-reading')).toHaveText('Pluck the selected string.');
+  await strum(page, 'c');
+  await page.evaluate(() => (window as unknown as { instrumentPlay: (notes: number[]) => void }).instrumentPlay([391.995, 391.995, 391.995, 391.995]));
+  await expect(page.locator('#tuning-reading')).toContainText('In tune');
+  await page.evaluate(() => (window as unknown as { instrumentPlay: (notes: number[]) => void }).instrumentPlay([380, 380, 380, 380]));
+  await expect(page.locator('#tuning-reading')).toContainText('Too flat');
+  await page.evaluate(() => (window as unknown as { instrumentPlay: (notes: number[]) => void }).instrumentPlay([405, 405, 405, 405]));
+  await expect(page.locator('#tuning-reading')).toContainText('Too sharp');
+  await page.evaluate(() => (window as unknown as { instrumentQuiet: () => void }).instrumentQuiet());
+  await expect(page.locator('#tuning-reading')).toHaveText('Pluck the selected string.');
+  await page.getByRole('button', { name: 'Back to practice' }).click();
+  await expect(page.getByText('● Microphone enabled')).toHaveCount(0);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('flashchords.progress.v1')!).history)).toHaveLength(0);
 });
