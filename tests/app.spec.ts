@@ -461,8 +461,8 @@ test('tuner opens from welcome and header, plays notes, and fits narrow phones',
   await page.getByRole('button', { name: 'Tune your ukulele', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Tune your ukulele.' })).toBeVisible();
-  await page.getByRole('button', { name: 'C4 String 3' }).click();
-  await expect(page.getByText('Target C4 · 261.63 Hz')).toBeVisible();
+  await expect(page.locator('[data-tuning-note]')).toHaveCount(4);
+  await expect(page.locator('[data-action="tuning-string"]')).toHaveCount(0);
   await page.getByRole('button', { name: 'Hear C4' }).click();
   await expect(page.locator('#tuning-reading')).toHaveText('Playing reference…');
   await expect(page.locator('#tuning-reading')).toHaveText('Enable the microphone to tune.');
@@ -478,7 +478,7 @@ test('tuner measures a single string, handles silence, and releases the micropho
   await page.goto('/');
   await page.getByRole('button', { name: 'Tune your ukulele', exact: true }).click();
   await page.getByRole('button', { name: 'Enable microphone', exact: true }).last().click();
-  await expect(page.locator('#tuning-reading')).toHaveText('Pluck the selected string.');
+  await expect(page.locator('#tuning-reading')).toHaveText('Pluck any open string.');
   await strum(page, 'c');
   await page.evaluate(() => (window as unknown as { instrumentPlay: (notes: number[]) => void }).instrumentPlay([391.995, 391.995, 391.995, 391.995]));
   await expect(page.locator('#tuning-reading')).toContainText('In tune');
@@ -486,8 +486,16 @@ test('tuner measures a single string, handles silence, and releases the micropho
   await expect(page.locator('#tuning-reading')).toContainText('Too flat');
   await page.evaluate(() => (window as unknown as { instrumentPlay: (notes: number[]) => void }).instrumentPlay([405, 405, 405, 405]));
   await expect(page.locator('#tuning-reading')).toContainText('Too sharp');
+  for (const [note, frequency] of [['C4', 261.626], ['E4', 329.628], ['A4', 440], ['G4', 391.995]] as const) {
+    await page.evaluate(hz => (window as unknown as { instrumentPlay: (notes: number[]) => void }).instrumentPlay([hz, hz, hz, hz]), frequency);
+    await expect(page.locator('#tuning-reading')).toHaveText(`${note} · In tune`);
+    await expect(page.locator('.tuner-string.is-active')).toHaveAttribute('data-tuning-note', note);
+    await expect(page.locator('.tuner-string.is-tuned')).toHaveCount(1);
+  }
   await page.evaluate(() => (window as unknown as { instrumentQuiet: () => void }).instrumentQuiet());
-  await expect(page.locator('#tuning-reading')).toHaveText('Pluck the selected string.');
+  await expect(page.locator('#tuning-reading')).toHaveText('Pluck any open string.');
+  await expect(page.locator('.tuner-string.is-active')).toHaveCount(0);
+  await expect(page.locator('#tuning-needle')).toBeHidden();
   await page.getByRole('button', { name: 'Back to practice' }).click();
   await expect(page.getByText('● Microphone enabled')).toHaveCount(0);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('flashchords.progress.v1')!).history)).toHaveLength(0);

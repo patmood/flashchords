@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TUNING, centsFrom, detectPitch, frequencyForMidi } from './tuner';
+import { TUNING, centsFrom, detectPitch, detectString, frequencyForMidi } from './tuner';
 
 describe('single-string tuner', () => {
   for (const rate of [44100, 48000]) {
@@ -26,5 +26,20 @@ describe('single-string tuner', () => {
       return seed / 2 ** 32 - .5;
     });
     expect(detectPitch(noise, 48000)).toBeNull();
+  });
+});
+
+describe('automatic string matching', () => {
+  for (const target of TUNING) {
+    for (const cents of [-40, 0, 35]) {
+      it(`finds ${target.note} at ${cents} cents without a selection`, () => {
+        const match = detectString(frequencyForMidi(target.midi) * 2 ** (cents / 1200));
+        expect(match?.target.note).toBe(target.note);
+        expect(match?.cents).toBeCloseTo(cents, 5);
+      });
+    }
+  }
+  it('ignores invalid and unrelated pitches', () => {
+    for (const frequency of [0, -1, NaN, Infinity, 100, 600]) expect(detectString(frequency)).toBeNull();
   });
 });

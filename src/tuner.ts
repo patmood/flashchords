@@ -7,6 +7,13 @@ export const TUNING = [
 export const frequencyForMidi = (midi: number) => 440 * 2 ** ((midi - 69) / 12);
 export const centsFrom = (frequency: number, midi: number) => 1200 * Math.log2(frequency / frequencyForMidi(midi));
 
+export function detectString(frequency: number) {
+  if (!Number.isFinite(frequency) || frequency <= 0) return null;
+  const matches = TUNING.map(target => ({ target, cents: centsFrom(frequency, target.midi) }));
+  const nearest = matches.sort((a, b) => Math.abs(a.cents) - Math.abs(b.cents))[0];
+  return Math.abs(nearest.cents) <= 150 ? nearest : null;
+}
+
 /** Normalized autocorrelation for one open high-G ukulele string. */
 export function detectPitch(samples: Float32Array, sampleRate: number): number | null {
   const size = Math.min(2048, Math.floor(samples.length / 2));

@@ -122,3 +122,26 @@
 .tuning-track { position: relative; height: 16px; margin: 0 8px; border-radius: 8px; background: linear-gradient(to right, #e0f2ff 45%, #c7ecd5 45%, #c7ecd5 55%, #e0f2ff 55%); }
 #tuning-needle { position: absolute; left: 50%; top: -4px; height: 24px; width: 4px; border-radius: 2px; background: #0875b9; transform: translateX(-50%); transition: left .1s; }
 @media (max-width: 360px) { .app-header .brand { font-size: 15px; } .app-header nav { gap: 0; } .app-header .nav-button { padding-inline: 4px; } }
+
+.tuner-display { text-align: center; padding: 22px 24px; }
+.tuner-note { font-size: 72px; line-height: 1.1; font-weight: 900; letter-spacing: -.06em; color: #168cd5; margin: 12px 0 8px; }
+.tuner-reading { font-size: 16px; font-weight: 900; min-height: 24px; }
+.tuner-detail { font-size: 11px; color: #54718a; min-height: 18px; margin: 4px 0 24px; font-variant-numeric: tabular-nums; }
+.tuner-scale { display: flex; justify-content: space-between; font-size: 10px; color: #54718a; margin-top: 10px; }
+.tuner-strings { display: grid; gap: 10px; margin-top: 20px; }
+.tuner-string { display: flex; align-items: center; gap: 12px; border: 2px solid #dce9f1; background: #ffffffbd; border-radius: 20px; padding: 12px; transition: background .15s, border-color .15s; }
+.string-note { display: flex; justify-content: center; align-items: baseline; width: 44px; height: 44px; padding-top: 5px; flex-shrink: 0; border-radius: 14px; color: #54718a; background: #eaf3f9; font-size: 24px; font-weight: 900; }
+.string-note small { font-size: 12px; margin-left: 2px; }
+.string-body { flex: 1; min-width: 0; }
+.string-caption { display: flex; justify-content: space-between; gap: 6px; font-size: 10px; color: #54718a; }
+.string-state { text-align: right; font-variant-numeric: tabular-nums; }
+.string-wire { height: var(--string-width); background: #bed5e3; border-radius: 4px; margin-top: 10px; box-shadow: 0 2px 0 #e9f1f6; }
+.string-play { display: flex; align-items: center; justify-content: center; width: 44px; min-height: 44px; flex-shrink: 0; color: #0875b9; border-radius: 12px; }
+.string-play:hover { background: #e0f2ff; }
+.tuner-string.is-active { background: #e4f5ff; border-color: #168cd5; }
+.tuner-string.is-active .string-note { color: white; background: #168cd5; }
+.tuner-string.is-active .string-wire { background: #168cd5; }
+.tuner-string.is-tuned { background: #eaf7ef; border-color: #399362; }
+.tuner-string.is-tuned .string-note, .tuner-string.is-tuned .string-wire, #tuning-needle.is-tuned { background: #26754b; }
+.tuner-note.is-tuned, .tuner-string.is-tuned .string-state { color: #26754b; }
+@media (max-width: 360px) { .tuner-string { gap: 8px; padding: 10px; } .string-caption { flex-direction: column; gap: 1px; } .string-state { text-align: left; } }

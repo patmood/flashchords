@@ -1,5 +1,5 @@
 import './style.css';
-import { TUNING, centsFrom, frequencyForMidi } from './tuner';
+import { TUNING, detectString, frequencyForMidi } from './tuner';
 import { CHORDS, diagram } from './chords';
 import { ChordMicrophone } from './audio';
 import { acceptIntroduction, dayKey, deferIntroduction, emptyProgress, ensureSession, loadProgress, needsIntroduction, nextExtraChord, nextFamiliarChord, recordAttempt, STORAGE_KEY } from './scheduler';
@@ -27,7 +27,6 @@ catch {
   storageWarning = 'Saved progress could not be read. It has not been overwritten. You can practice without saving, or reset it in settings.';
 }
 let view: 'practice' | 'complete' | 'progress' | 'settings' | 'break' | 'tuning' = 'practice';
-let tuningString = 0;
 let introId = '';
 let introResume = false;
 let currentIsSpacer = false;
@@ -298,20 +297,60 @@ function progressPage() {
 }
 
 function tuningPage() {
-  const target = TUNING[tuningString];
-  return `<section class="mx-auto max-w-lg py-6 sm:py-9"><p class="eyebrow">Find your sound</p><h1 class="mt-3 text-4xl">Tune your ukulele.</h1><p class="mt-4 text-sm leading-7 text-ink/70">Standard high-G tuning: G4 · C4 · E4 · A4. Choose a string, then pluck it on its own without holding any frets.</p>
-    <div class="my-6 grid grid-cols-4 gap-2" aria-label="Choose a string">${TUNING.map((string, i) => `<button data-action="tuning-string" data-string="${i}" aria-pressed="${i === tuningString}" class="secondary flex-col ${i === tuningString ? '!border-forest !bg-sage' : ''}"><span class="text-xl">${string.note}</span><span class="text-[10px]">String ${string.string}</span></button>`).join('')}</div>
-    <div class="panel text-center"><p class="eyebrow">Target ${target.note} · ${frequencyForMidi(target.midi).toFixed(2)} Hz</p><p id="tuning-reading" class="my-6 text-2xl font-bold" role="status">${micEnabled ? 'Pluck the selected string.' : 'Enable the microphone to tune.'}</p><div class="tuning-track" aria-hidden="true"><span id="tuning-needle"></span></div><div class="mt-2 flex justify-between text-xs text-ink/65"><span>Flat · tighten</span><span>In tune</span><span>Sharp · loosen</span></div><button data-action="tuning-reference" class="secondary mt-6 w-full">${icon('speaker')}Hear ${target.note}</button><p class="mt-3 text-xs leading-6 text-ink/65">Let the reference finish, then pluck your string. Adjust the tuning peg a little at a time.</p></div>
-    <button data-action="hands-free" class="primary mt-5" ${micStarting ? 'disabled' : ''}>${micStarting ? 'Connecting…' : micEnabled ? 'Turn microphone off' : 'Enable microphone'}</button><button data-action="practice" class="secondary mt-3 w-full">Back to practice</button></section>`;
+  return `<section class="tuner-page mx-auto max-w-lg py-6 sm:py-9"><p class="eyebrow">A little tune-up</p><h1 class="mt-3 text-4xl">Tune your ukulele.</h1><p class="mt-3 text-sm leading-6 text-ink/70">Pluck any open string. We’ll find it for you.</p>
+    <div class="tuner-display panel mt-5">
+      <p class="eyebrow">${micEnabled ? 'Automatic string detection' : 'Standard high-G · G–C–E–A'}</p>
+      <div id="tuning-note" class="tuner-note" aria-hidden="true">—</div>
+      <p id="tuning-reading" class="tuner-reading" role="status">${micEnabled ? 'Pluck any open string.' : 'Enable the microphone to tune.'}</p>
+      <p id="tuning-detail" class="tuner-detail">One string at a time, with no frets held.</p>
+      <div class="tuning-track" aria-hidden="true"><span id="tuning-needle" hidden></span></div>
+      <div class="tuner-scale"><span>Flat · tighten</span><span>In tune</span><span>Sharp · loosen</span></div>
+    </div>
+    <div class="tuner-strings" role="group" aria-label="Ukulele strings">${TUNING.map(target => `<div class="tuner-string" data-tuning-note="${target.note}">
+      <div class="string-note">${target.note[0]}<small>${target.note[1]}</small></div>
+      <div class="string-body"><div class="string-caption"><span>String ${target.string}</span><span class="string-state">${frequencyForMidi(target.midi).toFixed(2)} Hz</span></div><div class="string-wire" style="--string-width:${target.string === 3 ? 4 : target.string === 2 ? 3 : 2}px"></div></div>
+      <button data-action="tuning-reference" data-string="${target.string}" class="string-play" aria-label="Hear ${target.note}">${icon('speaker', 'h-4 w-4')}</button>
+    </div>`).join('')}</div>
+    <p class="mt-3 text-center text-xs leading-5 text-ink/65">Tap a speaker to hear a reference note. Let it finish before plucking.</p>
+    <button data-action="hands-free" class="primary mt-5" ${micStarting ? 'disabled' : ''}>${icon('mic')}${micStarting ? 'Connecting…' : micEnabled ? 'Turn microphone off' : 'Enable microphone'}</button><button data-action="practice" class="secondary mt-3 w-full">Back to practice</button></section>`;
 }
 
-async function playTuningReference() {
+function updateTuningReading(frequency: number | null) {
+  const match = frequency === null ? null : detectString(frequency);
+  const reading = document.querySelector<HTMLElement>('#tuning-reading');
+  const note = document.querySelector<HTMLElement>('#tuning-note');
+  const detail = document.querySelector<HTMLElement>('#tuning-detail');
+  const needle = document.querySelector<HTMLElement>('#tuning-needle');
+  if (!reading || !note || !detail || !needle) return;
+  const inTune = match !== null && Math.abs(match.cents) <= 5;
+  const direction = match ? inTune ? 'In tune' : match.cents < 0 ? 'Too flat · tighten' : 'Too sharp · loosen' : '';
+  note.textContent = match ? match.target.note : '—';
+  note.classList.toggle('is-tuned', inTune);
+  reading.textContent = match ? `${match.target.note} · ${direction}` : 'Pluck any open string.';
+  detail.textContent = match ? `${Math.round(match.cents) > 0 ? '+' : ''}${Math.round(match.cents)} cents · ${frequency!.toFixed(1)} Hz` : 'One string at a time, with no frets held.';
+  needle.hidden = !match;
+  needle.style.left = `${50 + Math.max(-50, Math.min(50, match?.cents ?? 0))}%`;
+  needle.classList.toggle('is-tuned', inTune);
+  document.querySelectorAll<HTMLElement>('[data-tuning-note]').forEach(row => {
+    const active = row.dataset.tuningNote === match?.target.note;
+    row.classList.toggle('is-active', active);
+    row.classList.toggle('is-tuned', active && inTune);
+    const target = TUNING.find(target => target.note === row.dataset.tuningNote)!;
+    row.querySelector('.string-state')!.textContent = active ? direction : `${frequencyForMidi(target.midi).toFixed(2)} Hz`;
+  });
+}
+
+async function playTuningReference(stringNumber: number) {
+  const target = TUNING.find(target => target.string === stringNumber);
+  if (!target) return;
   stopPreview();
   const token = ++previewRequest;
   previewing = true;
-  const status = document.querySelector('#tuning-reading');
-  if (status) status.textContent = 'Playing reference…';
-  await chordSound.playNote(frequencyForMidi(TUNING[tuningString].midi));
+  updateTuningReading(null);
+  document.querySelector('#tuning-note')!.textContent = target.note;
+  document.querySelector('#tuning-reading')!.textContent = 'Playing reference…';
+  document.querySelector('#tuning-detail')!.textContent = `Listen to ${target.note}, then try your string.`;
+  await chordSound.playNote(frequencyForMidi(target.midi));
   if (token !== previewRequest) return;
   previewing = false;
   if (view === 'tuning') render();
@@ -407,13 +446,7 @@ function succeed(selfAssessed: boolean) {
 function onAudioFrame(d: { chordId: string | null; level: number; listening: boolean; frequency?: number | null }) {
   if (document.hidden || previewing || starting || micStarting) return;
   if (view === 'tuning') {
-    const reading = document.querySelector<HTMLElement>('#tuning-reading');
-    const needle = document.querySelector<HTMLElement>('#tuning-needle');
-    if (!reading || !needle) return;
-    const cents = d.frequency ? centsFrom(d.frequency, TUNING[tuningString].midi) : null;
-    reading.textContent = cents === null ? 'Pluck the selected string.' : `${Math.abs(cents) <= 5 ? 'In tune' : cents < 0 ? 'Too flat · tighten' : 'Too sharp · loosen'} · ${Math.round(cents) > 0 ? '+' : ''}${Math.round(cents)} cents`;
-    needle.style.left = `${50 + Math.max(-50, Math.min(50, cents ?? 0))}%`;
-    needle.style.background = cents !== null && Math.abs(cents) <= 5 ? '#26754b' : '#0875b9';
+    updateTuningReading(d.frequency ?? null);
     return;
   }
   const modal = document.querySelector('dialog[open]');
@@ -531,12 +564,7 @@ document.addEventListener('click', event => {
       navigate('tuning');
       break;
     }
-    case 'tuning-string':
-      stopPreview();
-      tuningString = Number(button.dataset.string);
-      render();
-      break;
-    case 'tuning-reference': void playTuningReference(); break;
+    case 'tuning-reference': void playTuningReference(Number(button.dataset.string)); break;
     case 'progress': navigate('progress'); break;
     case 'settings': navigate('settings'); break;
     case 'hands-free':
