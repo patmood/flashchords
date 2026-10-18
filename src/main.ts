@@ -1,7 +1,8 @@
 import './style.css';
-import { TUNING, detectString, frequencyForMidi } from './tuner';
+import { TUNING, TunerTracker, detectString, frequencyForMidi } from './tuner';
 import { CHORDS, diagram } from './chords';
 import { ChordMicrophone } from './audio';
+import type { Detection } from './audio';
 import { acceptIntroduction, dayKey, deferIntroduction, emptyProgress, ensureSession, loadProgress, needsIntroduction, nextExtraChord, nextFamiliarChord, recordAttempt, STORAGE_KEY } from './scheduler';
 import type { Progress } from './scheduler';
 import { readStoredValue, WELCOME_KEY } from './storage';
@@ -11,6 +12,7 @@ const HINT_SECONDS = 15;
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 const microphone = new ChordMicrophone();
+const tuner = new TunerTracker();
 const chordSound = new ChordSound();
 let soundEnabled = true;
 try { soundEnabled = localStorage.getItem(SOUND_KEY) !== 'false'; } catch { /* Use the default. */ }
@@ -346,6 +348,7 @@ async function playTuningReference(stringNumber: number) {
   stopPreview();
   const token = ++previewRequest;
   previewing = true;
+  tuner.reset();
   updateTuningReading(null);
   document.querySelector('#tuning-note')!.textContent = target.note;
   document.querySelector('#tuning-reading')!.textContent = 'Playing reference…';
@@ -362,6 +365,7 @@ function settings() {
 
 function render(focus = false) {
   app.innerHTML = shell(view === 'practice' ? practice() : view === 'complete' ? completion() : view === 'progress' ? progressPage() : view === 'break' ? breakPage() : view === 'tuning' ? tuningPage() : settings());
+  if (view === 'tuning' && micEnabled && !previewing) updateTuningReading(tuner.frequency);
   refreshMicrophoneStatus();
   if (focus) {
     const main = document.querySelector<HTMLElement>('main')!;
@@ -443,10 +447,10 @@ function succeed(selfAssessed: boolean) {
   transitionTimer = setTimeout(() => nextCard(), 1400);
 }
 
-function onAudioFrame(d: { chordId: string | null; level: number; listening: boolean; frequency?: number | null }) {
+function onAudioFrame(d: Detection) {
   if (document.hidden || previewing || starting || micStarting) return;
   if (view === 'tuning') {
-    updateTuningReading(d.frequency ?? null);
+    updateTuningReading(tuner.update({ frequency: d.frequency ?? null, clarity: d.confidence, level: d.level }));
     return;
   }
   const modal = document.querySelector('dialog[open]');
@@ -467,6 +471,7 @@ function onAudioFrame(d: { chordId: string | null; level: number; listening: boo
 }
 
 function audioError(message: string) {
+  tuner.reset();
   micEnabled = false;
   micStarting = false;
   micError = message;
@@ -480,6 +485,7 @@ function audioError(message: string) {
 }
 
 function disconnectMicrophone(keepWanted = false) {
+  tuner.reset();
   micRequest++;
   micEnabled = false;
   micStarting = false;

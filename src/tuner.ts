@@ -14,27 +14,88 @@ export function detectString(frequency: number) {
   return Math.abs(nearest.cents) <= 150 ? nearest : null;
 }
 
+export interface PitchEstimate { frequency: number | null; clarity: number; level: number }
+
 /** Normalized autocorrelation for one open high-G ukulele string. */
-export function detectPitch(samples: Float32Array, sampleRate: number): number | null {
-  const size = Math.min(2048, Math.floor(samples.length / 2));
-  let energy = 0;
-  for (let i = 0; i < size; i++) energy += samples[i] ** 2;
-  if (energy / size < .000064) return null;
-  const correlations: number[] = [];
+export function measurePitch(samples: Float32Array, sampleRate: number): PitchEstimate {
   const first = Math.floor(sampleRate / 600);
   const last = Math.ceil(sampleRate / 200);
+  const size = Math.min(2048, samples.length - last - 1);
+  if (!Number.isFinite(sampleRate) || sampleRate <= 0 || size <= 0) return { frequency: null, clarity: 0, level: 0 };
+  // Use the newest complete window so peg adjustments aren't delayed by old audio.
+  const start = samples.length - size - last - 1;
+  let energy = 0;
+  for (let i = 0; i < size; i++) energy += samples[start + i] ** 2;
+  const level = Math.sqrt(energy / size);
+  if (level < .008) return { frequency: null, clarity: 0, level };
+  const correlations: number[] = [];
   for (let lag = first; lag <= last + 1; lag++) {
     let product = 0, shiftedEnergy = 0;
     for (let i = 0; i < size; i++) {
-      product += samples[i] * samples[i + lag];
-      shiftedEnergy += samples[i + lag] ** 2;
+      product += samples[start + i] * samples[start + i + lag];
+      shiftedEnergy += samples[start + i + lag] ** 2;
     }
-    correlations[lag] = product / Math.sqrt(energy * shiftedEnergy);
+    correlations[lag] = shiftedEnergy > 0 ? product / Math.sqrt(energy * shiftedEnergy) : 0;
     if (lag > first + 1 && correlations[lag - 1] > .9 && correlations[lag - 1] > correlations[lag - 2] && correlations[lag - 1] >= correlations[lag]) {
       const left = correlations[lag - 2], peak = correlations[lag - 1], right = correlations[lag];
       const offset = .5 * (left - right) / (left - 2 * peak + right);
-      return sampleRate / (lag - 1 + offset);
+      return { frequency: sampleRate / (lag - 1 + offset), clarity: peak, level };
     }
   }
-  return null;
+  return { frequency: null, clarity: 0, level };
+}
+
+export function detectPitch(samples: Float32Array, sampleRate: number): number | null {
+  return measurePitch(samples, sampleRate).frequency;
+}
+
+/** Holds the latest reliable pitch, while following sustained tuning changes. */
+export class TunerTracker {
+  frequency: number | null = null;
+  private recent: number[] = [];
+  private peakLevel = 0;
+  private previousLevel = 0;
+  private quietFrames = 0;
+
+  reset() {
+    this.frequency = null;
+    this.recent = [];
+    this.peakLevel = 0;
+    this.previousLevel = 0;
+    this.quietFrames = 0;
+  }
+
+  update({ frequency, clarity, level }: PitchEstimate): number | null {
+    if (level < .008) {
+      this.quietFrames++;
+      if (this.quietFrames >= 2) this.peakLevel = 0;
+    } else {
+      // A fresh pluck can be quieter than the previous one, even without silence.
+      if (level > this.previousLevel * 2) {
+        this.peakLevel = 0;
+        this.recent = [];
+      }
+      this.quietFrames = 0;
+    }
+    this.previousLevel = level;
+
+    const match = frequency === null ? null : detectString(frequency);
+    if (!match || !Number.isFinite(level) || !(clarity >= .97) || level < Math.max(.008, this.peakLevel * .2)) {
+      this.recent = [];
+      return this.frequency;
+    }
+    this.recent.push(frequency!);
+    if (this.recent.length > 3) this.recent.shift();
+    if (this.recent.length < 3) return this.frequency;
+
+    // A median rejects isolated attack/noise spikes without averaging between strings.
+    const [low, middle, high] = [...this.recent].sort((a, b) => a - b);
+    const agreement = Math.min(1200 * Math.log2(middle / low), 1200 * Math.log2(high / middle));
+    if (agreement <= 15) {
+      this.frequency = middle;
+      // Only stable readings establish the level gate; a loud attack must not lock it out.
+      this.peakLevel = Math.max(this.peakLevel, level);
+    }
+    return this.frequency;
+  }
 }

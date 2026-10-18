@@ -473,7 +473,7 @@ test('tuner opens from welcome and header, plays notes, and fits narrow phones',
   await expect(page.getByRole('heading', { name: 'Tune your ukulele.' })).toBeVisible();
 });
 
-test('tuner measures a single string, handles silence, and releases the microphone on exit', async ({ page }) => {
+test('tuner measures a single string, holds through silence, and releases the microphone on exit', async ({ page }) => {
   await installInstrument(page);
   await page.goto('/');
   await page.getByRole('button', { name: 'Tune your ukulele', exact: true }).click();
@@ -493,10 +493,69 @@ test('tuner measures a single string, handles silence, and releases the micropho
     await expect(page.locator('.tuner-string.is-tuned')).toHaveCount(1);
   }
   await page.evaluate(() => (window as unknown as { instrumentQuiet: () => void }).instrumentQuiet());
-  await expect(page.locator('#tuning-reading')).toHaveText('Pluck any open string.');
-  await expect(page.locator('.tuner-string.is-active')).toHaveCount(0);
-  await expect(page.locator('#tuning-needle')).toBeHidden();
+  await page.waitForTimeout(700);
+  await expect(page.locator('#tuning-reading')).toHaveText('G4 · In tune');
+  await expect(page.locator('.tuner-string.is-active')).toHaveAttribute('data-tuning-note', 'G4');
+  await expect(page.locator('#tuning-needle')).toBeVisible();
   await page.getByRole('button', { name: 'Back to practice' }).click();
   await expect(page.getByText('● Microphone enabled')).toHaveCount(0);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('flashchords.progress.v1')!).history)).toHaveLength(0);
+  await page.getByRole('button', { name: 'Tuner', exact: true }).click();
+  await expect(page.locator('#tuning-reading')).toHaveText('Enable the microphone to tune.');
+  await expect(page.locator('#tuning-needle')).toBeHidden();
+});
+
+test('tuner holds a fading reading, follows live peg adjustments, and accepts a quieter new pluck', async ({ page }) => {
+  await installInstrument(page, true);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Tune your ukulele', exact: true }).click();
+  await page.getByRole('button', { name: 'Enable microphone', exact: true }).last().click();
+  await expect(page.locator('#tuning-reading')).toHaveText('Pluck any open string.');
+  const playTone = (hz: number, level = .08) => page.evaluate(({ hz, level }) => {
+    (window as unknown as { instrumentPlay: (notes: number[], level: number) => void }).instrumentPlay([hz, hz, hz, hz], level);
+  }, { hz, level });
+  const g = 440 * 2 ** ((67 - 69) / 12);
+  await playTone(g * 2 ** (-35 / 1200));
+  await expect(page.locator('#tuning-detail')).toContainText('-35 cents');
+  const heldNeedle = await page.locator('#tuning-needle').getAttribute('style');
+
+  // A weak tail drifting toward the target must not falsely report "In tune".
+  await playTone(g, .009);
+  await page.waitForTimeout(800);
+  await expect(page.locator('#tuning-reading')).toHaveText('G4 · Too flat · tighten');
+  await expect(page.locator('#tuning-detail')).toContainText('-35 cents');
+  await expect(page.locator('#tuning-needle')).toHaveAttribute('style', heldNeedle!);
+  await page.evaluate(() => (window as unknown as { instrumentQuiet: () => void }).instrumentQuiet());
+  await page.waitForTimeout(700);
+  await expect(page.locator('#tuning-detail')).toContainText('-35 cents');
+
+  // A quieter fresh pluck replaces the held value, even on the same string.
+  await playTone(g * 2 ** (35 / 1200), .025);
+  await expect(page.locator('#tuning-detail')).toContainText('+35 cents');
+  await expect(page.locator('#tuning-reading')).toHaveText('G4 · Too sharp · loosen');
+  await page.evaluate(hz => {
+    (window as unknown as { instrumentTune: (notes: number[]) => void }).instrumentTune([hz, hz, hz, hz]);
+  }, g * 2 ** (-25 / 1200));
+  await expect(page.locator('#tuning-detail')).toContainText('-25 cents');
+  await expect(page.locator('#tuning-reading')).toHaveText('G4 · Too flat · tighten');
+  await page.evaluate(hz => {
+    (window as unknown as { instrumentTune: (notes: number[]) => void }).instrumentTune([hz, hz, hz, hz]);
+  }, g);
+  await expect(page.locator('#tuning-reading')).toHaveText('G4 · In tune');
+
+  await page.evaluate(() => (window as unknown as { instrumentQuiet: () => void }).instrumentQuiet());
+  await page.getByRole('button', { name: 'Hear C4' }).click();
+  await expect(page.locator('#tuning-reading')).toHaveText('Playing reference…');
+  await expect(page.locator('#tuning-reading')).toHaveText('Pluck any open string.');
+  await page.waitForTimeout(400);
+  await expect(page.locator('#tuning-needle')).toBeHidden();
+  await playTone(440, .02);
+  await expect(page.locator('#tuning-reading')).toHaveText('A4 · In tune');
+  await page.getByRole('button', { name: 'Turn microphone off', exact: true }).click();
+  await expect(page.locator('#tuning-reading')).toHaveText('Enable the microphone to tune.');
+  await expect(page.locator('#tuning-needle')).toBeHidden();
+  await page.getByRole('button', { name: 'Enable microphone', exact: true }).last().click();
+  await expect(page.locator('#tuning-reading')).toHaveText('Pluck any open string.');
+  await page.waitForTimeout(400);
+  await expect(page.locator('#tuning-needle')).toBeHidden();
 });

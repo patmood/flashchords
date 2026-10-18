@@ -1,4 +1,4 @@
-import { detectPitch } from './tuner';
+import { measurePitch } from './tuner';
 import { CHORDS, chordMidi } from './chords';
 
 export interface Detection { chordId: string | null; confidence: number; level: number; listening: boolean; frequency?: number | null }
@@ -86,11 +86,12 @@ export class ChordMicrophone {
           return;
         }
         analyser.getFloatTimeDomainData(waveform);
-        const level = Math.sqrt(waveform.reduce((s, n) => s + n * n, 0) / waveform.length);
         if (tuning) {
-          onFrame({ chordId: null, confidence: 0, level, listening: true, frequency: detectPitch(waveform, this.context.sampleRate) });
+          const pitch = measurePitch(waveform, this.context.sampleRate);
+          onFrame({ chordId: null, confidence: pitch.clarity, level: pitch.level, listening: true, frequency: pitch.frequency });
           return;
         }
+        const level = Math.sqrt(waveform.reduce((s, n) => s + n * n, 0) / waveform.length);
         if (level < .008) {
           this.quietFrames++;
           if (this.quietFrames >= 2) this.released = true;

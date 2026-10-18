@@ -21,9 +21,15 @@ export async function installInstrument(page: Page, feedback = false) {
         return oscillator;
       });
       Object.assign(window, {
-        instrumentPlay: (notes: number[]) => {
+        instrumentPlay: (notes: number[], level = .08) => {
           oscillators.forEach((oscillator, i) => { oscillator.frequency.value = notes[i]; });
-          gain.gain.value = .08;
+          gain.gain.value = level;
+        },
+        instrumentTune: (notes: number[]) => {
+          oscillators.forEach((oscillator, i) => {
+            oscillator.frequency.setValueAtTime(oscillator.frequency.value, context.currentTime);
+            oscillator.frequency.linearRampToValueAtTime(notes[i], context.currentTime + .8);
+          });
         },
         instrumentQuiet: () => { gain.gain.value = 0; },
       });
