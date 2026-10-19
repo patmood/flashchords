@@ -60,6 +60,12 @@ Vite’s relative base supports both `username.github.io/repository/` and root/c
   modal explains practice; checking **Don’t show again** when dismissing saves that
   preference in this browser. The microphone and hint timer start only after you
   choose microphone or manual practice below the card.
+- **Enable microphone** is the first, primary action in the welcome modal.
+  Outside welcome, a microphone modal appears when access is unavailable, including
+  after permission is revoked, a device disconnects, or audio is interrupted. It
+  offers retry, browser permission guidance, and **Continue without microphone**.
+  Choosing to continue without a microphone suppresses repeat prompts for that
+  session; opening the tuner or encountering a new access failure prompts again.
 - New chords first appear in an introduction modal with their fingering and sound.
   Playing the displayed chord with the microphone enabled, or tapping **I’m ready**,
   accepts the introduction without marking the chord learned.
@@ -74,7 +80,8 @@ Vite’s relative base supports both `username.github.io/repository/` and root/c
   becomes too weak or noisy to measure. Clear, continuous pitch changes keep the
   needle moving as you turn a tuning peg, even as the string gets quieter.
   All four strings have a reference tone to tune by ear. Detection pauses during
-  reference playback. Leaving the tuner releases its microphone.
+  reference playback. Navigation between the tuner and practice keeps the existing
+  microphone stream, switching analysis modes without asking for access again.
 - 20 chords, ordered from easy, useful shapes to later challenges: C, Am, F, G, C7, A, G7, A7, Em, Dm, D, E7, D7, Am7, Em7, Cm, Gm, B♭, Bm, E.
 - A daily queue contains oldest-due reviews first, then up to **3 new chords**, capped at **15 distinct chords**. It is fixed once practice starts and resumes after reload. Days use the device’s local calendar date.
 - The daily completion screen is a natural stopping point, not a lockout. **Keep

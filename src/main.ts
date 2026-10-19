@@ -37,6 +37,7 @@ let micStarting = false;
 let handsFreeWanted = false;
 let micRequest = 0;
 let micError = '';
+let micPromptDismissed = false;
 let manual = false;
 let modeSelected = false;
 let starting = false;
@@ -127,11 +128,11 @@ function showWelcome() {
   dialog.setAttribute('aria-describedby', 'welcome-description');
   dialog.innerHTML = `${mascot('welcome-mascot')}
     <h2 id="welcome-title" class="font-serif text-3xl">Welcome to Flashchords.</h2>
-    <div id="welcome-description" class="mt-4 space-y-3 text-sm leading-6 text-ink/70"><p>Meet each new chord, then try it from memory. A fingering hint appears after <strong>15 seconds</strong>.</p><p>Use a tuned <strong>high-G ukulele (G–C–E–A)</strong>. Enable the microphone to recognize your playing. Play the chord shown in a new-chord introduction to continue. Audio stays on your device.</p><p>Not ready for a new chord? Play three familiar cards, then try again.</p></div>
+    <div id="welcome-description" class="mt-4 space-y-3 text-sm leading-6 text-ink/70"><p>Meet each chord, then try it from memory. A fingering hint appears after <strong>15 seconds</strong>.</p><p>Use a tuned <strong>high-G ukulele (G–C–E–A)</strong>. Enable your microphone for tuning and chord recognition. Audio stays on your device.</p></div>
+    <button data-action="hands-free" class="primary mt-5" autofocus>Enable microphone</button><p class="dialog-listening mt-3 text-center text-xs" role="status"></p>
     <label class="my-5 flex min-h-11 cursor-pointer items-center gap-3 text-sm"><input id="hide-welcome" type="checkbox" class="h-5 w-5 accent-forest" />Don’t show again</label>
     <button data-action="tuning" class="secondary mb-3 w-full">Tune your ukulele</button>
-    <button id="dismiss-welcome" data-action="welcome-dismiss" class="primary" autofocus>Let’s play</button>
-    <button data-action="hands-free" class="secondary mt-3 w-full">Enable hands-free</button><p class="dialog-listening mt-3 text-center text-xs" role="status"></p>`;
+    <button id="dismiss-welcome" data-action="welcome-dismiss" class="secondary w-full">Let’s play</button>`;
   const dismiss = () => {
     const hide = dialog.querySelector<HTMLInputElement>('#hide-welcome')!.checked;
     try {
@@ -144,7 +145,7 @@ function showWelcome() {
     dialog.remove();
     if (!maybeShowIntroduction()) void playPreview();
     refreshMicrophoneStatus();
-    document.querySelector<HTMLElement>('[data-action="enable-mic"], main button')?.focus();
+    if (!document.querySelector('dialog[open]')) document.querySelector<HTMLElement>('[data-action="enable-mic"], main button')?.focus();
   };
   dialog.querySelector('#dismiss-welcome')!.addEventListener('click', dismiss);
   dialog.addEventListener('cancel', event => {
@@ -158,13 +159,83 @@ function showWelcome() {
 
 function refreshMicrophoneStatus() {
   document.querySelectorAll<HTMLElement>('.dialog-listening').forEach(el => {
-    el.textContent = previewing ? 'Playing the reference. Listening resumes afterward.' : micStarting ? 'Connecting microphone…' : micError || (micEnabled ? introId ? `Play ${CHORDS.find(c => c.id === introId)!.label} to continue.` : 'Microphone ready for chord recognition.' : 'Tap Enable hands-free once, or use the buttons normally.');
+    el.textContent = previewing ? 'Playing the reference. Listening resumes afterward.' : micStarting ? 'Connecting microphone…' : micError || (micEnabled ? introId ? `Play ${CHORDS.find(c => c.id === introId)!.label} to continue.` : 'Microphone ready for chord recognition.' : 'Tap Enable microphone, then allow access in your browser.');
   });
   document.querySelectorAll<HTMLButtonElement>('dialog [data-action="hands-free"]').forEach(button => {
     button.disabled = micStarting;
-    const text = micEnabled ? 'Turn hands-free off' : 'Enable hands-free';
+    const text = micStarting ? 'Connecting microphone…' : micEnabled ? 'Turn microphone off' : 'Enable microphone';
     if (button.firstChild?.nodeType === Node.TEXT_NODE) button.firstChild.textContent = text;
   });
+}
+
+function needsMicrophonePrompt() {
+  return appReady && !document.hidden && !micEnabled && !micPromptDismissed && !document.querySelector('#welcome-dialog');
+}
+
+function syncMicrophonePrompt() {
+  let dialog = document.querySelector<HTMLDialogElement>('#microphone-dialog');
+  const introduction = document.querySelector<HTMLDialogElement>('#introduction-dialog');
+  if (!needsMicrophonePrompt()) {
+    if (dialog) {
+      dialog.close();
+      dialog.remove();
+      if (introduction && !introduction.open && !document.hidden) introduction.showModal();
+    }
+    return;
+  }
+  if (!dialog) {
+    introduction?.close();
+    dialog = document.createElement('dialog');
+    dialog.id = 'microphone-dialog';
+    dialog.className = 'welcome-dialog panel';
+    dialog.setAttribute('aria-labelledby', 'microphone-title');
+    dialog.setAttribute('aria-describedby', 'microphone-description');
+    dialog.innerHTML = `<h2 id="microphone-title">Enable your microphone.</h2>
+      <p id="microphone-description" class="my-5 text-sm leading-6" role="status"></p>
+      <button data-action="microphone-connect" class="primary" autofocus>Enable microphone</button>
+      <button data-action="microphone-skip" class="secondary mt-3 w-full">Continue without microphone</button>
+      <p class="mt-4 text-center text-xs leading-5 text-ink/70">Your microphone powers the tuner and chord recognition. Audio stays on your device.</p>`;
+    dialog.addEventListener('cancel', event => { event.preventDefault(); continueWithoutMicrophone(); });
+    document.body.append(dialog);
+    dialog.showModal();
+  }
+  dialog.querySelector('#microphone-description')!.textContent = micStarting
+    ? 'Allow microphone access in your browser’s permission prompt. Waiting for your microphone…'
+    : micError || 'Microphone access is not active. Enable it, then choose Allow when your browser asks.';
+  const button = dialog.querySelector<HTMLButtonElement>('[data-action="microphone-connect"]')!;
+  button.disabled = micStarting;
+  button.textContent = micStarting ? 'Connecting microphone…' : micError ? 'Try microphone again' : 'Enable microphone';
+}
+
+function continueWithoutMicrophone() {
+  micPromptDismissed = true;
+  disconnectMicrophone();
+  render();
+  if (view === 'practice' && hasStarted && paused && !introId) void begin(true, true);
+  else if (!maybeShowIntroduction()) void playPreview();
+}
+
+async function connectFromMicrophonePrompt() {
+  if (!await enableHandsFree()) return;
+  if (view === 'practice' && hasStarted && paused && !introId) void begin(false, true);
+  else if (!maybeShowIntroduction()) void playPreview();
+}
+
+async function watchMicrophonePermission() {
+  try {
+    const permission = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+    let previous = permission.state;
+    const changed = () => {
+      const lost = permission.state === 'denied' || (previous === 'granted' && permission.state !== 'granted');
+      previous = permission.state;
+      if (lost) {
+        disconnectMicrophone(true);
+        audioError('Microphone access is not allowed. Open your browser’s site settings, allow Microphone, then try again.');
+      }
+    };
+    permission.addEventListener('change', changed);
+    changed();
+  } catch { /* Some browsers do not expose microphone permission status; connection errors still prompt. */ }
 }
 
 function closeIntroduction() {
@@ -176,6 +247,7 @@ function closeIntroduction() {
 }
 
 function maybeShowIntroduction(): boolean {
+  if (needsMicrophonePrompt()) { syncMicrophonePrompt(); return true; }
   if (view !== 'practice' || !needsIntroduction(progress, currentId)) return false;
   if (document.querySelector('#welcome-dialog')) return true;
   if (document.querySelector('#introduction-dialog')) return true;
@@ -239,7 +311,7 @@ function stopPreview(resumeTimer = false) {
 }
 
 async function playPreview(force = false) {
-  if (view !== 'practice' || successful || document.hidden || (!soundEnabled && !force)) return;
+  if (view !== 'practice' || successful || document.hidden || needsMicrophonePrompt() || (!soundEnabled && !force)) return;
   stopPreview(true);
   const token = ++previewRequest;
   const chord = CHORDS.find(c => c.id === currentId)!;
@@ -373,6 +445,7 @@ function render(focus = false) {
     main.focus({ preventScroll: true });
     window.scrollTo({ top: 0, behavior: 'instant' });
   }
+  syncMicrophonePrompt();
 }
 
 function stopActivity() {
@@ -388,14 +461,16 @@ function stopActivity() {
 function navigate(next: typeof view) {
   stopActivity();
   if (view === 'practice') paused = true;
-  if (view === 'tuning') disconnectMicrophone();
+  tuner.reset();
+  microphone.setTuning(next === 'tuning');
   error = '';
   view = next;
   render(true);
 }
 
 function openPractice() {
-  if (view === 'tuning') disconnectMicrophone();
+  tuner.reset();
+  microphone.setTuning(false);
   stopActivity();
   practiceMode = 'daily';
   error = '';
@@ -471,6 +546,8 @@ function onAudioFrame(d: Detection) {
 }
 
 function audioError(message: string) {
+  micPromptDismissed = false;
+  micRequest++;
   tuner.reset();
   micEnabled = false;
   micStarting = false;
@@ -494,6 +571,7 @@ function disconnectMicrophone(keepWanted = false) {
 }
 
 async function enableHandsFree(): Promise<boolean> {
+  micPromptDismissed = false;
   handsFreeWanted = true;
   if (soundEnabled) void chordSound.unlock();
   if (micEnabled) { microphone.arm(); return true; }
@@ -540,6 +618,7 @@ async function begin(useManual: boolean, resume = false) {
     starting = false;
     if (!connected) { render(); return; }
   } else {
+    micPromptDismissed = true;
     disconnectMicrophone();
     micError = '';
   }
@@ -566,7 +645,7 @@ document.addEventListener('click', event => {
       break;
     case 'tuning': {
       document.querySelector<HTMLDialogElement>('#welcome-dialog')?.remove();
-      disconnectMicrophone();
+      micPromptDismissed = false;
       navigate('tuning');
       break;
     }
@@ -574,9 +653,11 @@ document.addEventListener('click', event => {
     case 'progress': navigate('progress'); break;
     case 'settings': navigate('settings'); break;
     case 'hands-free':
-      if (micEnabled) { disconnectMicrophone(); render(); }
+      if (micEnabled) { micPromptDismissed = true; disconnectMicrophone(); render(); }
       else void enableHandsFree();
       break;
+    case 'microphone-connect': void connectFromMicrophonePrompt(); break;
+    case 'microphone-skip': continueWithoutMicrophone(); break;
     case 'intro-accept': acceptCurrentIntroduction(); break;
     case 'intro-defer': deferCurrentIntroduction(); break;
     case 'retry-intro':
@@ -634,6 +715,7 @@ setInterval(() => {
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) {
     if (handsFreeWanted && !micEnabled && !micStarting) void enableHandsFree();
+    else syncMicrophonePrompt();
     return;
   }
   disconnectMicrophone(true);
@@ -668,3 +750,4 @@ openPractice();
 showWelcome();
 appReady = true;
 if (!document.querySelector('#welcome-dialog') && !maybeShowIntroduction()) void playPreview();
+void watchMicrophonePermission();

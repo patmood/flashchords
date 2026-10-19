@@ -5,7 +5,9 @@ export async function installInstrument(page: Page, feedback = false) {
   await page.addInitScript(feedback => {
     let micContext: AudioContext | null = null;
     let micDestination: MediaStreamAudioDestinationNode | null = null;
+    let requests = 0;
     navigator.mediaDevices.getUserMedia = async () => {
+      requests++;
       const context = new AudioContext();
       await context.resume();
       const destination = context.createMediaStreamDestination();
@@ -21,6 +23,13 @@ export async function installInstrument(page: Page, feedback = false) {
         return oscillator;
       });
       Object.assign(window, {
+        instrumentRequests: requests,
+        instrumentDisconnect: () => {
+          destination.stream.getAudioTracks().forEach(track => {
+            track.stop();
+            track.dispatchEvent(new Event('ended'));
+          });
+        },
         instrumentPlay: (notes: number[], level = .08) => {
           oscillators.forEach((oscillator, i) => { oscillator.frequency.value = notes[i]; });
           gain.gain.value = level;

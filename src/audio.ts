@@ -49,6 +49,12 @@ export class ChordMicrophone {
   private quietFrames = 0;
   private lastMatch = '';
   private matchFrames = 0;
+  private tuning = false;
+
+  setTuning(tuning: boolean) {
+    this.tuning = tuning;
+    this.arm();
+  }
 
   arm() {
     this.released = false;
@@ -59,6 +65,7 @@ export class ChordMicrophone {
 
   async start(onFrame: (d: Detection) => void, onError: (message: string) => void, tuning = false): Promise<void> {
     this.stop();
+    this.setTuning(tuning);
     const generation = this.generation;
     if (!navigator.mediaDevices?.getUserMedia) throw new Error('Microphone access needs HTTPS and a supported browser. You can still practice manually.');
     const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
@@ -82,11 +89,12 @@ export class ChordMicrophone {
       this.arm();
       this.interval = setInterval(() => {
         if (!this.context || this.context.state !== 'running') {
-          onFrame({ chordId: null, confidence: 0, level: 0, listening: false });
+          this.stop();
+          onError('Microphone audio was interrupted. Enable the microphone to reconnect.');
           return;
         }
         analyser.getFloatTimeDomainData(waveform);
-        if (tuning) {
+        if (this.tuning) {
           const pitch = measurePitch(waveform, this.context.sampleRate);
           onFrame({ chordId: null, confidence: pitch.clarity, level: pitch.level, listening: true, frequency: pitch.frequency });
           return;
