@@ -559,3 +559,31 @@ test('tuner holds a fading reading, follows live peg adjustments, and accepts a 
   await page.waitForTimeout(400);
   await expect(page.locator('#tuning-needle')).toBeHidden();
 });
+
+test('tuner needle keeps moving during a peg adjustment as the string fades', async ({ page }) => {
+  await installInstrument(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Tune your ukulele', exact: true }).click();
+  await page.getByRole('button', { name: 'Enable microphone', exact: true }).last().click();
+  await expect(page.locator('#tuning-reading')).toHaveText('Pluck any open string.');
+  const g = 440 * 2 ** ((67 - 69) / 12);
+  await page.evaluate(hz => {
+    (window as unknown as { instrumentPlay: (notes: number[]) => void }).instrumentPlay([hz, hz, hz, hz]);
+  }, g * 2 ** (-40 / 1200));
+  await expect(page.locator('#tuning-detail')).toContainText('-40 cents');
+  await page.evaluate(hz => {
+    (window as unknown as { instrumentTune: (notes: number[], duration: number, level: number) => void })
+      .instrumentTune([hz, hz, hz, hz], 3, .002);
+  }, g * 2 ** (40 / 1200));
+  // Check movement during the glide, as well as its much quieter final pitch.
+  await expect.poll(async () => {
+    const cents = Number((await page.locator('#tuning-detail').innerText()).split(' cents')[0]);
+    return cents > -30 && cents < 0;
+  }).toBe(true);
+  await expect(page.locator('#tuning-detail')).toContainText('+40 cents');
+  await expect(page.locator('#tuning-reading')).toHaveText('G4 · Too sharp · loosen');
+  await page.evaluate(() => (window as unknown as { instrumentQuiet: () => void }).instrumentQuiet());
+  await page.waitForTimeout(700);
+  await expect(page.locator('#tuning-detail')).toContainText('+40 cents');
+  await expect(page.locator('#tuning-needle')).toBeVisible();
+});

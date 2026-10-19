@@ -16,6 +16,9 @@ export function detectString(frequency: number) {
 
 export interface PitchEstimate { frequency: number | null; clarity: number; level: number }
 
+const TRACKING_LEVEL = .003;
+const ACQUISITION_LEVEL = .008;
+
 /** Normalized autocorrelation for one open high-G ukulele string. */
 export function measurePitch(samples: Float32Array, sampleRate: number): PitchEstimate {
   const first = Math.floor(sampleRate / 600);
@@ -27,7 +30,7 @@ export function measurePitch(samples: Float32Array, sampleRate: number): PitchEs
   let energy = 0;
   for (let i = 0; i < size; i++) energy += samples[start + i] ** 2;
   const level = Math.sqrt(energy / size);
-  if (level < .008) return { frequency: null, clarity: 0, level };
+  if (level < TRACKING_LEVEL) return { frequency: null, clarity: 0, level };
   const correlations: number[] = [];
   for (let lag = first; lag <= last + 1; lag++) {
     let product = 0, shiftedEnergy = 0;
@@ -66,7 +69,7 @@ export class TunerTracker {
   }
 
   update({ frequency, clarity, level }: PitchEstimate): number | null {
-    if (level < .008) {
+    if (level < TRACKING_LEVEL) {
       this.quietFrames++;
       if (this.quietFrames >= 2) this.peakLevel = 0;
     } else {
@@ -80,7 +83,14 @@ export class TunerTracker {
     this.previousLevel = level;
 
     const match = frequency === null ? null : detectString(frequency);
-    if (!match || !Number.isFinite(level) || !(clarity >= .97) || level < Math.max(.008, this.peakLevel * .2)) {
+    const previous = this.recent.at(-1);
+    // Once acquired, follow a clear, continuous pitch even as the string fades.
+    // A weak jump to another pitch must still pass the stronger acquisition gate.
+    const continuous = this.frequency !== null && match && previous !== undefined
+      && detectString(previous)?.target.midi === match.target.midi
+      && Math.abs(1200 * Math.log2(frequency! / previous)) <= 15;
+    const minimumLevel = continuous ? TRACKING_LEVEL : Math.max(ACQUISITION_LEVEL, this.peakLevel * .2);
+    if (!match || !Number.isFinite(level) || !(clarity >= .97) || level < minimumLevel) {
       this.recent = [];
       return this.frequency;
     }

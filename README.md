@@ -71,7 +71,8 @@ Vite’s relative base supports both `username.github.io/repository/` and root/c
 - **Tune** in the header and **Tune your ukulele** in the welcome modal open the
   tuner. Pluck any open string for automatic string detection, live pitch feedback,
   and a flat/sharp cents meter. The last stable reading stays visible as the sound
-  fades, while clear pitch changes still update live as you turn a tuning peg.
+  becomes too weak or noisy to measure. Clear, continuous pitch changes keep the
+  needle moving as you turn a tuning peg, even as the string gets quieter.
   All four strings have a reference tone to tune by ear. Detection pauses during
   reference playback. Leaving the tuner releases its microphone.
 - 20 chords, ordered from easy, useful shapes to later challenges: C, Am, F, G, C7, A, G7, A7, Em, Dm, D, E7, D7, Am7, Em7, Cm, Gm, B♭, Bm, E.

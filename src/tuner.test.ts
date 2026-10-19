@@ -94,6 +94,57 @@ describe('held tuning readings', () => {
     expect(settle(tracker, 40, .04)).toBe(hz(40));
   });
 
+  it('keeps following a clear pitch as it fades below the acquisition threshold', () => {
+    const tracker = new TunerTracker();
+    settle(tracker, -40);
+    for (let step = 1; step <= 16; step++) {
+      const cents = -40 + step * 5;
+      const reading = feed(tracker, cents, .1 * .82 ** step);
+      expect(centsFrom(reading!, 67)).toBeCloseTo(cents - 5, 5);
+    }
+    const held = settle(tracker, 40, .004);
+    expect(held).toBe(hz(40));
+    expect(feed(tracker, 0, .002)).toBe(held);
+    expect(tracker.update({ frequency: null, clarity: 0, level: 0 })).toBe(held);
+  });
+
+  for (const sampleRate of [44100, 48000]) {
+    it(`tracks a real fading waveform with continuously changing pitch at ${sampleRate} Hz`, () => {
+      const tracker = new TunerTracker();
+      const initial = hz(-40);
+      const slope = (hz(40) - initial) / 2.6;
+      let previous = -Infinity;
+      for (let frame = 0; frame < 28; frame++) {
+        const waveform = Float32Array.from({ length: 8192 }, (_, i) => {
+          const t = frame * .09 + i / sampleRate;
+          const phase = 2 * Math.PI * (initial * t + .5 * slope * t * t);
+          return .2 * Math.exp(-1.35 * t) * (Math.sin(phase) + .3 * Math.sin(2 * phase));
+        });
+        const pitch = measurePitch(waveform, sampleRate);
+        const reading = tracker.update(pitch);
+        if (frame < 2) continue;
+        const cents = centsFrom(reading!, 67);
+        expect(cents).toBeGreaterThan(previous);
+        previous = cents;
+        const latestTime = frame * .09 + waveform.length / sampleRate;
+        expect(Math.abs(cents - centsFrom(initial + slope * latestTime, 67))).toBeLessThan(6);
+      }
+      expect(previous).toBeGreaterThan(30);
+    });
+  }
+
+  it('requires a fresh reliable signal after weak audio becomes uncertain', () => {
+    const tracker = new TunerTracker();
+    expect(settle(tracker, -40, .004)).toBeNull();
+    settle(tracker, -40);
+    feed(tracker, -35, .018);
+    feed(tracker, -30, .015);
+    const held = tracker.frequency;
+    expect(feed(tracker, -25, .014, .9)).toBe(held);
+    for (let i = 0; i < 5; i++) expect(feed(tracker, 0, .012)).toBe(held);
+    expect(settle(tracker, 25, .03)).toBe(hz(25));
+  });
+
   it('replaces a held reading with a quieter pluck of the same or another string', () => {
     const tracker = new TunerTracker();
     settle(tracker, -35, .3);
